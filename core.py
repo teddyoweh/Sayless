@@ -15,6 +15,9 @@ import os
 import time
 from config import Config
 from ai_providers import OllamaProvider, OpenAIProvider
+import datetime
+from dateutil.parser import parse as parse_date
+from dateutil.relativedelta import relativedelta
 
 app = typer.Typer(help="🤖 AI-powered Git commit message generator")
 console = Console()
@@ -79,19 +82,7 @@ def show_config_status():
     console.print(table)
     console.print()
 
-def animated_check_git():
-    """Check git repository with animation"""
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        console=console,
-    ) as progress:
-        task = progress.add_task("Checking git repository...", total=None)
-        result = is_git_repository()
-        progress.update(task, completed=True)
-        return result
-
-def is_git_repository():
+def check_git_repo():
     """Check if current directory is a git repository"""
     try:
         subprocess.run(['git', 'rev-parse', '--is-inside-work-tree'], 
@@ -113,7 +104,7 @@ def has_staged_changes():
 
 def get_staged_diff():
     """Get the diff of staged changes"""
-    if not animated_check_git():
+    if not check_git_repo():
         panel = Panel(
             "[red]Not in a git repository[/red]\n\n"
             "[yellow]Please run this command inside a git repository.[/yellow]\n"
@@ -198,6 +189,121 @@ def generate_commit_message(diff: str, provider, model: str) -> str:
                 console.print(Panel(f"[red]Both OpenAI and Ollama failed.\nOriginal error: {str(e)}[/red]", title="Error", border_style="red"))
                 sys.exit(1)
         raise
+
+def get_commit_range(since=None, until=None):
+    """Get commit range based on dates"""
+    cmd = ['git', 'log', '--no-merges', '--format=%H']
+    
+    if since:
+        cmd.append(f'--since={since}')
+    if until:
+        cmd.append(f'--until={until}')
+    
+    try:
+        commits = subprocess.check_output(cmd, stderr=subprocess.PIPE).decode('utf-8').strip().split('\n')
+        return commits if commits and commits[0] else []
+    except subprocess.CalledProcessError:
+        return []
+
+def get_commit_details(commit_hash):
+    """Get details for a specific commit"""
+    try:
+        details = subprocess.check_output(
+            ['git', 'show', '--no-color', '--format=%s%n%b', commit_hash],
+            stderr=subprocess.PIPE
+        ).decode('utf-8').strip()
+        return details
+    except subprocess.CalledProcessError:
+        return None
+
+def generate_summary(commits, provider, model):
+    """Generate a summary of changes from commits"""
+    if not commits:
+        return "No changes found in the specified period."
+    
+    # Get all commit messages and diffs
+    commit_details = []
+    for commit in commits[:10]:  # Limit to last 10 commits for reasonable context
+        details = get_commit_details(commit)
+        if details:
+            commit_details.append(details)
+    
+    commit_text = "\n\n".join(commit_details)
+    
+    prompt = f"""Based on these recent commits, generate a concise summary of changes.
+Group related changes together and highlight major updates.
+Focus on the business impact and key features/fixes.
+
+Recent commits:
+
+{commit_text}
+
+Generate a summary in this format:
+## Major Changes
+- (grouped major changes)
+
+## Features
+- (new features)
+
+## Fixes & Improvements
+- (bug fixes and improvements)
+
+Keep each bullet point concise and clear."""
+
+    try:
+        return provider.generate_commit_message(prompt, model)
+    except Exception as e:
+        if isinstance(provider, OpenAIProvider):
+            console.print("[yellow]OpenAI failed, trying Ollama fallback...[/yellow]")
+            try:
+                fallback_provider = OllamaProvider()
+                return fallback_provider.generate_commit_message(prompt, "llama2")
+            except Exception:
+                raise Exception(f"Both providers failed. Original error: {str(e)}")
+        raise
+
+def parse_time_interval(interval):
+    """Parse time interval string into timedelta"""
+    if not interval:
+        return relativedelta(days=1)  # Default to last 24 hours
+        
+    units = {
+        'd': 'days',
+        'w': 'weeks',
+        'm': 'months',
+        'y': 'years',
+        'h': 'hours'
+    }
+    
+    unit = interval[-1].lower()
+    try:
+        value = int(interval[:-1])
+        if unit in units:
+            return relativedelta(**{units[unit]: value})
+    except ValueError:
+        pass
+    
+    # If parsing fails, try to parse as a date
+    try:
+        since_date = parse_date(interval)
+        return since_date
+    except ValueError:
+        raise ValueError(
+            "Invalid time interval. Use format: <number><unit> or a date.\n"
+            "Units: h (hours), d (days), w (weeks), m (months), y (years)\n"
+            "Example: 2w (2 weeks), 3m (3 months), 2023-01-01"
+        )
+
+def format_date(date_str):
+    """Convert date string to human readable format"""
+    try:
+        if isinstance(date_str, str):
+            date = parse_date(date_str)
+        else:
+            date = date_str
+        return date.strftime("%A, %B %d, %Y")  # e.g., "Tuesday, May 15, 2023"
+    except:
+        return date_str
 
 @app.command()
 def switch(
@@ -337,39 +443,248 @@ def generate(
     # Ensure OpenAI is properly configured if it's the selected provider
     ensure_openai_configured()
     
-    with Progress(
+    # Create a single progress instance for all tasks
+    progress = Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
-        console=console,
-    ) as progress:
+        console=console
+    )
+    
+    message = None  # Initialize message variable
+    
+    with progress:
+        # Check git repository
+        task_check = progress.add_task("Checking git repository...", total=None)
+        if not check_git_repo():
+            progress.update(task_check, visible=False)
+            panel = Panel(
+                "[red]Not in a git repository[/red]\n\n"
+                "[yellow]Please run this command inside a git repository.[/yellow]\n"
+                "To initialize a new git repository:\n"
+                "[blue]  git init[/blue]",
+                title="Error",
+                border_style="red"
+            )
+            console.print(panel)
+            sys.exit(1)
+        progress.update(task_check, completed=True)
+        
         # Get staged changes
-        task1 = progress.add_task("Getting staged changes...", total=None)
+        task_diff = progress.add_task("Getting staged changes...", total=None)
         diff = get_staged_diff()
-        progress.update(task1, completed=True)
+        progress.update(task_diff, completed=True)
         
         # Generate message
-        task2 = progress.add_task("Generating commit message...", total=None)
+        task_gen = progress.add_task("Generating commit message...", total=None)
         provider = get_ai_provider()
         model = settings.get_model()
-        message = generate_commit_message(diff, provider, model)
-        progress.update(task2, completed=True)
-    
+        
+        try:
+            message = provider.generate_commit_message(diff, model)
+        except Exception as e:
+            if isinstance(provider, OpenAIProvider):
+                progress.update(task_gen, description="OpenAI failed, trying Ollama fallback...")
+                try:
+                    fallback_provider = OllamaProvider()
+                    message = fallback_provider.generate_commit_message(diff, "llama2")
+                except Exception:
+                    progress.update(task_gen, visible=False)
+                    console.print(Panel(
+                        f"[red]Both OpenAI and Ollama failed.\nOriginal error: {str(e)}[/red]",
+                        title="Error",
+                        border_style="red"
+                    ))
+                    sys.exit(1)
+            else:
+                raise
+        
+        progress.update(task_gen, completed=True)
+
     # Show the generated message in a panel
+    if message:
+        console.print(Panel(
+            f"[yellow]{message}[/yellow]",
+            title="Generated Commit Message",
+            border_style="green"
+        ))
+
+        if preview:
+            console.print("\n[blue]Preview mode: Commit not created[/blue]")
+            return
+
+        # Ask for confirmation with styled prompt
+        if typer.confirm("\n💭 Do you want to create the commit with this message?"):
+            with progress:
+                task_commit = progress.add_task("Creating commit...", total=None)
+                try:
+                    subprocess.run(['git', 'commit', '-m', message], check=True)
+                    progress.update(task_commit, completed=True)
+                    console.print("\n[bold green]✓[/bold green] Commit created successfully!")
+                except subprocess.CalledProcessError as e:
+                    progress.update(task_commit, visible=False)
+                    console.print(Panel(
+                        f"[red]Failed to create commit\nDetails: {str(e)}[/red]",
+                        title="Error",
+                        border_style="red"
+                    ))
+                    sys.exit(1)
+        else:
+            console.print("\n[yellow]Commit cancelled[/yellow]")
+
+@app.command()
+def summary(
+    preview: bool = typer.Option(False, help="Preview the summary without saving"),
+    save: bool = typer.Option(False, help="Save the summary to a file"),
+):
+    """Generate a summary of recent changes (last 24 hours)"""
+    show_welcome_message()
+    ensure_openai_configured()
+    
+    progress = Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console
+    )
+    
+    with progress:
+        # Get recent commits
+        task_commits = progress.add_task("Getting recent commits...", total=None)
+        commits = get_commit_range(since="1 day ago")
+        progress.update(task_commits, completed=True)
+        
+        if not commits:
+            console.print(Panel(
+                "[yellow]No changes found in the last 24 hours.[/yellow]",
+                title="Summary",
+                border_style="yellow"
+            ))
+            return
+        
+        # Generate summary
+        task_summary = progress.add_task("Generating summary...", total=None)
+        provider = get_ai_provider()
+        model = settings.get_model()
+        
+        try:
+            summary_text = generate_summary(commits, provider, model)
+            progress.update(task_summary, completed=True)
+        except Exception as e:
+            progress.update(task_summary, visible=False)
+            console.print(Panel(
+                f"[red]Failed to generate summary\nError: {str(e)}[/red]",
+                title="Error",
+                border_style="red"
+            ))
+            return
+    
+    # Get yesterday's date in human readable format
+    yesterday = datetime.datetime.now() - datetime.timedelta(days=1)
+    date_str = format_date(yesterday)
+    
+    # Show the summary
     console.print(Panel(
-        f"[yellow]{message}[/yellow]",
-        title="Generated Commit Message",
-        border_style="green"
+        f"[green]{summary_text}[/green]",
+        title=f"Changes Summary (Since {date_str})",
+        border_style="cyan"
     ))
+    
+    if save:
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"summary_{timestamp}.md"
+        try:
+            with open(filename, 'w') as f:
+                f.write(f"# Changes Summary (Since {date_str})\n\n")
+                f.write(summary_text)
+            console.print(f"\n[green]Summary saved to: {filename}[/green]")
+        except Exception as e:
+            console.print(f"\n[red]Failed to save summary: {str(e)}[/red]")
 
-    if preview:
-        console.print("\n[blue]Preview mode: Commit not created[/blue]")
+@app.command()
+def since(
+    interval: str = typer.Argument(..., help="Time interval (e.g., 2w, 3m, 2023-01-01)"),
+    until: str = typer.Option(None, help="End date (default: now)"),
+    preview: bool = typer.Option(False, help="Preview the summary without saving"),
+    save: bool = typer.Option(False, help="Save the summary to a file"),
+):
+    """Generate a summary of changes since a specific time or date"""
+    show_welcome_message()
+    ensure_openai_configured()
+    
+    progress = Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console
+    )
+    
+    try:
+        since_time = parse_time_interval(interval)
+        if isinstance(since_time, datetime.datetime):
+            since_str = since_time.strftime("%Y-%m-%d")
+            since_display = format_date(since_time)
+        else:
+            since_date = datetime.datetime.now() - since_time
+            since_str = since_date.strftime("%Y-%m-%d")
+            since_display = format_date(since_date)
+        
+        until_display = format_date(until) if until else "now"
+        
+    except ValueError as e:
+        console.print(Panel(
+            f"[red]{str(e)}[/red]",
+            title="Error",
+            border_style="red"
+        ))
         return
-
-    # Ask for confirmation with styled prompt
-    if typer.confirm("\n💭 Do you want to create the commit with this message?"):
-        create_commit(message)
-    else:
-        console.print("\n[yellow]Commit cancelled[/yellow]")
+    
+    with progress:
+        # Get commits for the period
+        task_commits = progress.add_task("Getting commits...", total=None)
+        commits = get_commit_range(since=since_str, until=until)
+        progress.update(task_commits, completed=True)
+        
+        if not commits:
+            console.print(Panel(
+                f"[yellow]No changes found between {since_display} and {until_display}.[/yellow]",
+                title="Summary",
+                border_style="yellow"
+            ))
+            return
+        
+        # Generate summary
+        task_summary = progress.add_task("Generating summary...", total=None)
+        provider = get_ai_provider()
+        model = settings.get_model()
+        
+        try:
+            summary_text = generate_summary(commits, provider, model)
+            progress.update(task_summary, completed=True)
+        except Exception as e:
+            progress.update(task_summary, visible=False)
+            console.print(Panel(
+                f"[red]Failed to generate summary\nError: {str(e)}[/red]",
+                title="Error",
+                border_style="red"
+            ))
+            return
+    
+    # Show the summary
+    title = f"Changes Summary (From {since_display} to {until_display})"
+    console.print(Panel(
+        f"[green]{summary_text}[/green]",
+        title=title,
+        border_style="cyan"
+    ))
+    
+    if save:
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"summary_since_{interval.replace('/', '_')}_{timestamp}.md"
+        try:
+            with open(filename, 'w') as f:
+                f.write(f"# {title}\n\n")
+                f.write(summary_text)
+            console.print(f"\n[green]Summary saved to: {filename}[/green]")
+        except Exception as e:
+            console.print(f"\n[red]Failed to save summary: {str(e)}[/red]")
 
 if __name__ == "__main__":
     app()
