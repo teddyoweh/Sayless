@@ -1,149 +1,132 @@
-# Sayless - AI-Powered Git Commit Messages
+# Sayless 🤖
 
-A smart CLI tool that automatically generates meaningful commit messages using AI. It analyzes your staged changes and generates conventional commit messages that are clear, concise, and follow best practices.
+Sayless is an AI-powered Git commit message generator and repository analysis tool. It uses advanced AI models to generate meaningful commit messages, search through your commit history, and provide insightful summaries of your repository changes.
 
 ## Features
 
-- 🤖 Uses OpenAI's GPT models by default (with Ollama as fallback)
-- 🎯 Generates conventional commit messages (feat, fix, docs, etc.)
-- 🔄 Supports both cloud (OpenAI) and local (Ollama) AI
-- 🚀 Easy setup and configuration
-- 💡 Smart fallback between providers
-- 🎨 Beautiful terminal output
+### 🎯 Smart Commit Message Generation
+- Automatically generates meaningful commit messages based on your staged changes
+- Supports both OpenAI (GPT-4) and Ollama (local AI) for message generation
+- Preview mode to review generated messages before committing
 
-## Prerequisites
+### 🔍 Semantic Commit Search
+- Search through your commit history using natural language
+- AI-powered relevance scoring and grouping
+- Automatic commit indexing for fast searches
+- Detailed summaries of matching commits
 
-1. Python 3.7+
-2. Git repository with staged changes
-3. OpenAI API key (recommended) or Ollama (alternative)
+### 📊 Repository Analysis
+- Generate summaries of changes over specific time periods
+- Detailed analysis of individual commits
+- Impact assessment and technical details for each commit
+- Export summaries to markdown files
+
+### 🔄 Flexible AI Provider Support
+- OpenAI (GPT-4) for high-quality results
+- Ollama (local AI) for offline/private use
+- Automatic fallback between providers
+- Easy provider switching
 
 ## Installation
 
-1. Clone this repository
-2. Install the dependencies:
+1. Ensure you have Python 3.7+ installed
+2. Install the package using pip:
 ```bash
-pip install -r requirements.txt
-```
-
-## Setup
-
-### Option 1: OpenAI (Recommended)
-
-Set up your OpenAI API key using one of these methods:
-
-```bash
-# Method 1: Environment variable
-export OPENAI_API_KEY=your_api_key
-
-# Method 2: CLI configuration
-sayless config --openai-key your_api_key
-```
-
-### Option 2: Ollama (Local AI)
-
-If you prefer to use local AI:
-
-1. Install Ollama from https://ollama.ai
-2. Switch to Ollama:
-```bash
-sayless config --use-ollama
-```
-
-## Usage
-
-1. Stage your changes:
-```bash
-git add .  # or git add <specific-files>
-```
-
-2. Generate and create commit:
-```bash
-sayless generate
-```
-
-3. Preview without committing:
-```bash
-sayless generate --preview
+pip install sayless
 ```
 
 ## Configuration
 
-View current settings:
+### Using OpenAI (Recommended)
 ```bash
-sayless config --show
-```
-
-### AI Provider
-
-```bash
-# Use OpenAI (default)
-sayless config --use-openai
-
-# Use Ollama (local AI)
-sayless config --use-ollama
-```
-
-### Models
-
-```bash
-# OpenAI models
-sayless config --model gpt-4
-sayless config --model gpt-4o  # default
-
-# Ollama models
-sayless config --model llama2  # default for Ollama
-sayless config --model codellama
-```
-
-### OpenAI API Key
-
-```bash
-# Set API key
+# Set your OpenAI API key
 sayless config --openai-key YOUR_API_KEY
 
-# Using environment variable
-export OPENAI_API_KEY=your_api_key
+# Or use the quick switch command
+sayless switch openai --key YOUR_API_KEY
 ```
 
-## How It Works
-
-1. Checks for staged changes in your git repository
-2. Analyzes the diff using AI (OpenAI by default, Ollama as fallback)
-3. Generates a conventional commit message
-4. Creates the commit after your confirmation
-
-## Conventional Commits
-
-Generated messages follow the conventional commits format:
-
-```
-<type>(<scope>): <description>
+### Using Ollama (Local AI)
+1. Install Ollama from [ollama.ai](https://ollama.ai)
+2. Switch to Ollama:
+```bash
+sayless switch ollama
 ```
 
-Types:
-- `feat`: A new feature
-- `fix`: A bug fix
-- `docs`: Documentation changes
-- `style`: Code style changes
-- `refactor`: Code refactoring
-- `perf`: Performance improvements
-- `test`: Adding/fixing tests
-- `chore`: Maintenance tasks
+## Usage
 
-## Configuration File
+### Generate Commit Messages
+```bash
+# Stage your changes first
+git add .
 
-Settings are stored in `~/.sayless/config.json`:
-- AI provider (openai/ollama)
-- OpenAI API key
-- Default model
+# Generate and create a commit
+sayless generate
 
-## Error Handling
+# Preview without committing
+sayless generate --preview
+```
 
-- Automatically falls back to Ollama if OpenAI fails
-- Clear error messages and setup instructions
-- Validates git repository and staged changes
-- Confirms commit messages before applying
+### Search Commits
+```bash
+# Search for commits related to a topic
+sayless search "fix authentication bug"
+
+# Index all commits before searching
+sayless search "api improvements" --index-all
+
+# Limit search results
+sayless search "database optimization" --limit 10
+```
+
+### Analyze Changes
+```bash
+# Get detailed analysis of a specific commit
+sayless summary <commit-hash> --detailed
+
+# Summarize changes since last week
+sayless since 1w
+
+# Summarize changes between dates
+sayless since 2023-01-01 --until 2023-12-31
+
+# Save summary to file
+sayless since 1m --save
+```
+
+### Configuration Commands
+```bash
+# Show current configuration
+sayless config --show
+
+# Switch AI providers
+sayless switch openai --key YOUR_API_KEY
+sayless switch ollama
+
+# Change models
+sayless switch openai --model gpt-4
+sayless switch ollama --model llama2
+```
+
+## Requirements
+
+- Python 3.7+
+- Git
+- For OpenAI: Valid API key and internet connection
+- For Ollama: Local Ollama installation
+
+## Environment Variables
+
+- `OPENAI_API_KEY`: Your OpenAI API key (alternative to using --openai-key)
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request. 
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+
+MIT License - feel free to use this in your own projects!
+
+## Support
+
+If you encounter any issues or have questions, please open an issue on GitHub. 

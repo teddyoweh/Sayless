@@ -10,7 +10,7 @@ from rich.table import Table
 from rich.live import Live
 from rich.spinner import Spinner
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
-from typing import Optional
+from typing import Optional, Tuple
 import os
 import time
 from config import Config
@@ -18,6 +18,8 @@ from ai_providers import OllamaProvider, OpenAIProvider
 import datetime
 from dateutil.parser import parse as parse_date
 from dateutil.relativedelta import relativedelta
+import asyncio
+from embeddings import CommitEmbeddings
 
 app = typer.Typer(help="🤖 AI-powered Git commit message generator")
 console = Console()
@@ -305,6 +307,42 @@ def format_date(date_str):
     except:
         return date_str
 
+def get_commit_details_for_hash(commit_hash: str) -> Tuple[str, str, str]:
+    """Get commit message, diff and date for a commit hash"""
+    try:
+        # Get commit message and date
+        commit_info = subprocess.check_output(
+            ['git', 'show', '-s', '--format=%B%n%aI', commit_hash],
+            stderr=subprocess.PIPE
+        ).decode('utf-8').strip().split('\n')
+        
+        commit_message = '\n'.join(commit_info[:-1])
+        commit_date = commit_info[-1]
+        
+        # Get commit diff
+        diff = subprocess.check_output(
+            ['git', 'show', '--no-color', '--format=', commit_hash],
+            stderr=subprocess.PIPE
+        ).decode('utf-8').strip()
+        
+        return commit_message, diff, commit_date
+    except subprocess.CalledProcessError as e:
+        error_msg = e.stderr.decode('utf-8')
+        raise Exception(f"Failed to get commit details: {error_msg}")
+
+async def index_commit(commit_hash: str, progress=None):
+    """Index a single commit"""
+    try:
+        message, diff, date = get_commit_details_for_hash(commit_hash)
+        embeddings = CommitEmbeddings()
+        tags = embeddings.get_commit_tags(message, diff)
+        await embeddings.add_commit(commit_hash, message, diff, date, tags)
+        return True
+    except Exception as e:
+        if progress:
+            console.print(f"[yellow]Failed to index commit {commit_hash}: {str(e)}[/yellow]")
+        return False
+
 @app.command()
 def switch(
     provider: str = typer.Argument(..., help="AI provider to use (openai or ollama)"),
@@ -437,20 +475,17 @@ def generate(
     preview: bool = typer.Option(False, help="Preview the commit message without creating the commit"),
 ):
     """Generate a commit message for staged changes and create the commit"""
-    
     show_welcome_message()
-    
-    # Ensure OpenAI is properly configured if it's the selected provider
     ensure_openai_configured()
     
-    # Create a single progress instance for all tasks
     progress = Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
         console=console
     )
     
-    message = None  # Initialize message variable
+    message = None
+    commit_hash = None
     
     with progress:
         # Check git repository
@@ -499,9 +534,9 @@ def generate(
                 raise
         
         progress.update(task_gen, completed=True)
-
-    # Show the generated message in a panel
+    
     if message:
+        # Show the generated message in a panel
         console.print(Panel(
             f"[yellow]{message}[/yellow]",
             title="Generated Commit Message",
@@ -517,13 +552,39 @@ def generate(
             with progress:
                 task_commit = progress.add_task("Creating commit...", total=None)
                 try:
-                    subprocess.run(['git', 'commit', '-m', message], check=True)
+                    # Create commit and get its hash
+                    result = subprocess.run(
+                        ['git', 'commit', '-m', message],
+                        capture_output=True,
+                        text=True,
+                        check=True
+                    )
+                    commit_hash = subprocess.check_output(
+                        ['git', 'rev-parse', 'HEAD'],
+                        stderr=subprocess.PIPE
+                    ).decode('utf-8').strip()
+                    
                     progress.update(task_commit, completed=True)
                     console.print("\n[bold green]✓[/bold green] Commit created successfully!")
+                    
+                    # Index the commit
+                    task_index = progress.add_task("Indexing commit for search...", total=None)
+                    try:
+                        success = asyncio.run(index_commit(commit_hash))
+                        if success:
+                            progress.update(task_index, completed=True)
+                            console.print("[green]✓[/green] Commit indexed for search")
+                        else:
+                            progress.update(task_index, visible=False)
+                            console.print("\n[yellow]Note: Failed to index commit[/yellow]")
+                    except Exception as e:
+                        progress.update(task_index, visible=False)
+                        console.print(f"\n[yellow]Note: Failed to index commit: {str(e)}[/yellow]")
+                    
                 except subprocess.CalledProcessError as e:
                     progress.update(task_commit, visible=False)
                     console.print(Panel(
-                        f"[red]Failed to create commit\nDetails: {str(e)}[/red]",
+                        f"[red]Failed to create commit\nDetails: {e.stderr}[/red]",
                         title="Error",
                         border_style="red"
                     ))
@@ -533,71 +594,142 @@ def generate(
 
 @app.command()
 def summary(
-    preview: bool = typer.Option(False, help="Preview the summary without saving"),
-    save: bool = typer.Option(False, help="Save the summary to a file"),
+    commit_hash: str = typer.Argument(..., help="The commit hash to summarize"),
+    detailed: bool = typer.Option(False, "--detailed", "-d", help="Show a more detailed analysis"),
 ):
-    """Generate a summary of recent changes (last 24 hours)"""
+    """Generate an AI-powered summary of a specific commit"""
     show_welcome_message()
     ensure_openai_configured()
     
-    progress = Progress(
+    with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
         console=console
-    )
-    
-    with progress:
-        # Get recent commits
-        task_commits = progress.add_task("Getting recent commits...", total=None)
-        commits = get_commit_range(since="1 day ago")
-        progress.update(task_commits, completed=True)
-        
-        if not commits:
-            console.print(Panel(
-                "[yellow]No changes found in the last 24 hours.[/yellow]",
-                title="Summary",
-                border_style="yellow"
-            ))
-            return
-        
-        # Generate summary
-        task_summary = progress.add_task("Generating summary...", total=None)
-        provider = get_ai_provider()
-        model = settings.get_model()
+    ) as progress:
+        task = progress.add_task("Analyzing commit...", total=None)
         
         try:
-            summary_text = generate_summary(commits, provider, model)
-            progress.update(task_summary, completed=True)
+            # Get commit details
+            message, diff, date = get_commit_details_for_hash(commit_hash)
+            
+            # Prepare the prompt based on detail level
+            if detailed:
+                prompt = f"""Analyze this commit and provide a detailed summary:
+
+Commit Message:
+{message}
+
+Changes:
+{diff}
+
+Provide the analysis in this format:
+<summary>
+A clear, concise summary of the main changes
+</summary>
+
+<impact>
+The potential impact of these changes
+</impact>
+
+<details>
+Key technical details and important changes
+</details>"""
+            else:
+                prompt = f"""Given this commit, provide a natural, concise summary of what it does:
+
+Commit Message:
+{message}
+
+Changes:
+{diff}
+
+Respond with just the summary, focusing on the practical impact."""
+
+            # Get AI summary with fallback
+            try:
+                provider = get_ai_provider()
+                summary_text = asyncio.run(provider.generate_commit_message(prompt, settings.get_model()))
+            except Exception as e:
+                if "Connection" in str(e) and isinstance(provider, OpenAIProvider):
+                    progress.update(task, description="OpenAI connection failed, using local Ollama...")
+                    fallback_provider = OllamaProvider()
+                    summary_text = asyncio.run(
+                        asyncio.get_event_loop().run_in_executor(
+                            None,
+                            lambda: fallback_provider.generate_commit_message(prompt, "llama2")
+                        )
+                    )
+                else:
+                    raise
+            
+            progress.update(task, completed=True)
+            
+            # Format date
+            formatted_date = format_date(parse_date(date))
+            
+            if detailed:
+                # Parse structured response
+                try:
+                    summary_part = summary_text.split("<summary>")[1].split("</summary>")[0].strip()
+                    impact_part = summary_text.split("<impact>")[1].split("</impact>")[0].strip()
+                    details_part = summary_text.split("<details>")[1].split("</details>")[0].strip()
+                    
+                    # Display detailed analysis
+                    console.print(Panel(
+                        "\n".join([
+                            f"[bold white]{message}[/bold white]",
+                            "",
+                            "[bold cyan]Summary[/bold cyan]",
+                            f"[white]{summary_part}[/white]",
+                            "",
+                            "[bold cyan]Impact[/bold cyan]",
+                            f"[white]{impact_part}[/white]",
+                            "",
+                            "[bold cyan]Technical Details[/bold cyan]",
+                            f"[white]{details_part}[/white]"
+                        ]),
+                        title=f"[yellow]commit {commit_hash[:8]} • {formatted_date}[/yellow]",
+                        border_style="yellow",
+                        padding=(1, 2)
+                    ))
+                except:
+                    # Fallback to simple display if parsing fails
+                    console.print(Panel(
+                        summary_text,
+                        title=f"[yellow]commit {commit_hash[:8]} • {formatted_date}[/yellow]",
+                        border_style="yellow",
+                        padding=(1, 2)
+                    ))
+            else:
+                # Simple summary display
+                console.print(Panel(
+                    "\n".join([
+                        f"[bold white]{message}[/bold white]",
+                        "",
+                        f"[white]{summary_text}[/white]"
+                    ]),
+                    title=f"[yellow]commit {commit_hash[:8]} • {formatted_date}[/yellow]",
+                    border_style="yellow",
+                    padding=(1, 2)
+                ))
+            
         except Exception as e:
-            progress.update(task_summary, visible=False)
-            console.print(Panel(
-                f"[red]Failed to generate summary\nError: {str(e)}[/red]",
-                title="Error",
-                border_style="red"
-            ))
-            return
-    
-    # Get yesterday's date in human readable format
-    yesterday = datetime.datetime.now() - datetime.timedelta(days=1)
-    date_str = format_date(yesterday)
-    
-    # Show the summary
-    console.print(Panel(
-        f"[green]{summary_text}[/green]",
-        title=f"Changes Summary (Since {date_str})",
-        border_style="cyan"
-    ))
-    
-    if save:
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"summary_{timestamp}.md"
-        try:
-            with open(filename, 'w') as f:
-                f.write(f"# Changes Summary (Since {date_str})\n\n")
-                f.write(summary_text)
-            console.print(f"\n[green]Summary saved to: {filename}[/green]")
-        except Exception as e:
-            console.print(f"\n[red]Failed to save summary: {str(e)}[/red]")
+            progress.update(task, visible=False)
+            if "Connection" in str(e):
+                console.print(Panel(
+                    "[red]Failed to connect to AI services. Make sure either:\n" +
+                    "• Your internet connection is working (for OpenAI)\n" +
+                    "• Ollama is running (for local AI)[/red]",
+                    title="⚠️ Connection Error",
+                    border_style="red"
+                ))
+            else:
+                console.print(Panel(
+                    f"[red]Failed to analyze commit: {str(e)}[/red]",
+                    title="⚠️ Error",
+                    border_style="red"
+                ))
+            sys.exit(1)
 
 @app.command()
 def since(
@@ -685,6 +817,202 @@ def since(
             console.print(f"\n[green]Summary saved to: {filename}[/green]")
         except Exception as e:
             console.print(f"\n[red]Failed to save summary: {str(e)}[/red]")
+
+@app.command()
+def search(
+    query: str = typer.Argument(..., help="Search query for finding similar commits"),
+    limit: int = typer.Option(5, help="Maximum number of results to show"),
+    index_all: bool = typer.Option(False, help="Re-index all commits before searching"),
+):
+    """Search for similar commits using AI-powered semantic search"""
+    show_welcome_message()
+    ensure_openai_configured()
+    
+    embeddings = CommitEmbeddings()
+    
+    # Re-index all commits if requested
+    if index_all:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console
+        ) as progress:
+            task = progress.add_task("Indexing repository history...", total=None)
+            
+            try:
+                # Get all commit hashes
+                commits = subprocess.check_output(
+                    ['git', 'log', '--format=%H'],
+                    stderr=subprocess.PIPE
+                ).decode('utf-8').strip().split('\n')
+                
+                # Process each commit
+                indexed_count = 0
+                for commit_hash in commits:
+                    success = asyncio.run(index_commit(commit_hash, progress))
+                    if success:
+                        indexed_count += 1
+                
+                progress.update(task, completed=True)
+                console.print(f"\n[green]✨ Repository indexed! Found and processed {indexed_count} commits[/green]")
+                
+            except Exception as e:
+                progress.update(task, visible=False)
+                console.print(Panel(
+                    f"[red]Oops! Something went wrong while indexing: {str(e)}[/red]",
+                    title="⚠️ Error",
+                    border_style="red"
+                ))
+                return
+    
+    # Search for similar commits
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console
+    ) as progress:
+        task = progress.add_task("🔍 Finding relevant commits...", total=None)
+        
+        try:
+            results = asyncio.run(embeddings.search_commits(query, limit))
+            progress.update(task, completed=True)
+            
+            if not results:
+                console.print(Panel(
+                    "[yellow]I couldn't find any commits matching your search. Try:\n" +
+                    "• Using different keywords\n" +
+                    "• Being more general in your search\n" +
+                    "• Making sure you've indexed your commits (--index-all)[/yellow]",
+                    title="No Results Found",
+                    border_style="yellow"
+                ))
+                return
+            
+            # Group results by relevance
+            high_relevance = []
+            medium_relevance = []
+            low_relevance = []
+            
+            for result in results:
+                score = 1 - result['score']  # Convert distance to similarity
+                if score > 0.8:
+                    high_relevance.append(result)
+                elif score > 0.5:
+                    medium_relevance.append(result)
+                else:
+                    low_relevance.append(result)
+            
+            # Print summary
+            console.print(f"\n[bold]🔍 Search Results for:[/bold] [cyan]{query}[/cyan]")
+            console.print(f"[dim]Found {len(results)} relevant commits in your repository[/dim]\n")
+            
+            # Function to get AI-augmented summary with fallback
+            async def get_commit_summary(message: str, score: float) -> str:
+                try:
+                    provider = get_ai_provider()
+                    try:
+                        prompt = f"""Given this commit message, provide a one-line natural explanation of its relevance:
+                        Message: {message}
+                        
+                        Respond in this format:
+                        <relevance>Brief explanation of how this commit relates to the search</relevance>"""
+                        
+                        summary = await provider.generate_commit_message(prompt, settings.get_model())
+                        # Extract content between relevance tags
+                        if '<relevance>' in summary and '</relevance>' in summary:
+                            summary = summary.split('<relevance>')[1].split('</relevance>')[0].strip()
+                        return summary
+                    except Exception as e:
+                        if "Connection" in str(e) and isinstance(provider, OpenAIProvider):
+                            console.print("[yellow]Connection error with OpenAI, falling back to local Ollama...[/yellow]")
+                            fallback_provider = OllamaProvider()
+                            summary = await asyncio.get_event_loop().run_in_executor(
+                                None, 
+                                lambda: fallback_provider.generate_commit_message(prompt, "llama2")
+                            )
+                            if '<relevance>' in summary and '</relevance>' in summary:
+                                summary = summary.split('<relevance>')[1].split('</relevance>')[0].strip()
+                            return summary
+                        raise
+                except:
+                    return None
+
+            # Function to format commit info
+            def format_commit_info(result, summary: str = None):
+                message = result['message'].split('\n')[0]  # First line only
+                
+                # Format the message nicely
+                info = []
+                
+                # Add the main message
+                info.append(f"[bold white]{message}[/bold white]")
+                
+                # Add AI summary if available
+                if summary:
+                    info.append(f"[dim italic]{summary}[/dim italic]")
+                
+                return "\n".join(info)
+            
+            # Show best matches
+            if high_relevance:
+                console.print("\n[bold green]🎯 Best Matches[/bold green]")
+                for result in high_relevance:
+                    date = format_date(parse_date(result['date']))
+                    hash_short = result['commit_hash'][:8]
+                    # Get AI summary for high relevance commits
+                    summary = asyncio.run(get_commit_summary(result['message'], 1 - result['score']))
+                    console.print(Panel(
+                        format_commit_info(result, summary=summary),
+                        border_style="green",
+                        expand=False,
+                        padding=(1, 2),
+                        title=f"[green]commit {hash_short} • {date}[/green]"
+                    ))
+            
+            # Show good matches
+            if medium_relevance:
+                console.print("\n[bold yellow]✨ Good Matches[/bold yellow]")
+                for result in medium_relevance:
+                    date = format_date(parse_date(result['date']))
+                    hash_short = result['commit_hash'][:8]
+                    # Get AI summary for medium relevance commits
+                    summary = asyncio.run(get_commit_summary(result['message'], 1 - result['score']))
+                    console.print(Panel(
+                        format_commit_info(result, summary=summary),
+                        border_style="yellow",
+                        expand=False,
+                        padding=(1, 2),
+                        title=f"[yellow]commit {hash_short} • {date}[/yellow]"
+                    ))
+            
+            # Show other matches
+            if low_relevance:
+                console.print("\n[bold]📍 Other Related Commits[/bold]")
+                for result in low_relevance:
+                    date = format_date(parse_date(result['date']))
+                    hash_short = result['commit_hash'][:8]
+                    # Get AI summary for low relevance commits
+                    summary = asyncio.run(get_commit_summary(result['message'], 1 - result['score']))
+                    console.print(Panel(
+                        format_commit_info(result, summary=summary),
+                        border_style="blue",
+                        expand=False,
+                        padding=(1, 2),
+                        title=f"[blue]commit {hash_short} • {date}[/blue]"
+                    ))
+            
+            # Show tip about summary command
+            if results:
+                console.print("\n[dim]💡 Tip: Get a detailed analysis of any commit with:[/dim]")
+                console.print("[dim]  sayless summary <commit-hash> --detailed[/dim]")
+            
+        except Exception as e:
+            progress.update(task, visible=False)
+            console.print(Panel(
+                f"[red]Oops! Something went wrong while searching: {str(e)}[/red]",
+                title="⚠️ Error",
+                border_style="red"
+            ))
 
 if __name__ == "__main__":
     app()
