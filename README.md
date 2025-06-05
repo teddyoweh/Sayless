@@ -88,7 +88,7 @@ sayless config --use-ollama
 ```bash
 # OpenAI models
 sayless config --model gpt-4
-sayless config --model gpt-3.5-turbo  # default
+sayless config --model gpt-4o  # default
 
 # Ollama models
 sayless config --model llama2  # default for Ollama

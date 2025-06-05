@@ -20,7 +20,7 @@ class Config:
             default_config = {
                 'provider': 'openai',  # 'openai' or 'ollama'
                 'openai_api_key': None,
-                'model': 'gpt-3.5-turbo'  # default model for OpenAI
+                'model': 'gpt-4o'  # default model for OpenAI
             }
             self.save_config(default_config)
             return default_config
@@ -43,7 +43,7 @@ class Config:
         default_config = {
             'provider': 'openai',
             'openai_api_key': None,
-            'model': 'gpt-3.5-turbo'
+            'model': 'gpt-4o'
         }
         self.save_config(default_config)
         return default_config
@@ -72,7 +72,7 @@ class Config:
         self.config['provider'] = provider
         # Set appropriate default model when switching providers
         if provider == 'openai' and self.config.get('model') == 'llama2':
-            self.config['model'] = 'gpt-3.5-turbo'
+            self.config['model'] = 'gpt-4o'
         elif provider == 'ollama' and 'gpt' in self.config.get('model', ''):
             self.config['model'] = 'llama2'
         self.save_config(self.config)
@@ -88,4 +88,4 @@ class Config:
 
     def get_model(self):
         """Get current model name"""
-        return self.config.get('model', 'gpt-3.5-turbo') 
+        return self.config.get('model', 'gpt-4o') 

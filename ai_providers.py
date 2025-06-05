@@ -42,7 +42,7 @@ class OpenAIProvider(AIProvider):
     def __init__(self, api_key: str):
         self.client = OpenAI(api_key=api_key)
 
-    def generate_commit_message(self, diff: str, model: str = "gpt-3.5-turbo") -> str:
+    def generate_commit_message(self, diff: str, model: str = "gpt-4o") -> str:
         prompt = self._get_prompt(diff)
         
         try:
