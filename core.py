@@ -12,7 +12,7 @@ from ai_providers import OllamaProvider, OpenAIProvider
 
 app = typer.Typer()
 console = Console()
-config = Config()
+settings = Config()
 
 def is_git_repository():
     """Check if current directory is a git repository"""
@@ -80,10 +80,10 @@ def create_commit(message: str):
 
 def get_ai_provider():
     """Get the configured AI provider"""
-    provider = config.get_provider()
+    provider = settings.get_provider()
     
     if provider == 'openai':
-        api_key = config.get_openai_api_key()
+        api_key = settings.get_openai_api_key()
         if not api_key:
             console.print("[red]Error: OpenAI API key not found[/red]")
             console.print("[yellow]Please set your OpenAI API key using one of these methods:[/yellow]")
@@ -109,13 +109,13 @@ def config(
     """Configure the AI provider and settings"""
     if show:
         console.print("\n[bold]Current Configuration:[/bold]")
-        console.print(f"Provider: [green]{config.get_provider()}[/green]")
-        console.print(f"Model: [green]{config.get_model()}[/green]")
-        console.print(f"OpenAI API Key: [green]{'configured' if config.get_openai_api_key() else 'not configured'}[/green]")
+        console.print(f"Provider: [green]{settings.get_provider()}[/green]")
+        console.print(f"Model: [green]{settings.get_model()}[/green]")
+        console.print(f"OpenAI API Key: [green]{'configured' if settings.get_openai_api_key() else 'not configured'}[/green]")
         return
 
     if openai_key:
-        config.set_openai_api_key(openai_key)
+        settings.set_openai_api_key(openai_key)
         console.print("[green]OpenAI API key configured successfully![/green]")
 
     if use_openai and use_ollama:
@@ -123,16 +123,16 @@ def config(
         sys.exit(1)
 
     if use_openai:
-        config.set_provider('openai')
-        if not config.get_openai_api_key():
+        settings.set_provider('openai')
+        if not settings.get_openai_api_key():
             console.print("[yellow]Warning: OpenAI API key not configured[/yellow]")
             console.print("Set it with: [blue]sayless config --openai-key YOUR_API_KEY[/blue]")
     elif use_ollama:
-        config.set_provider('ollama')
+        settings.set_provider('ollama')
         console.print("[yellow]Note: Switched to Ollama (local AI)[/yellow]")
 
     if model:
-        config.set_model(model)
+        settings.set_model(model)
         console.print(f"[green]Model set to: {model}[/green]")
 
 @app.command()
@@ -145,13 +145,13 @@ def generate(
         diff = get_staged_diff()
     
     provider = get_ai_provider()
-    model = config.get_model()
+    model = settings.get_model()
     
     with console.status("[bold green]Generating commit message..."):
         try:
             message = provider.generate_commit_message(diff, model)
         except Exception as e:
-            if config.get_provider() == 'openai':
+            if settings.get_provider() == 'openai':
                 console.print("[yellow]OpenAI failed. Trying Ollama as fallback...[/yellow]")
                 try:
                     provider = OllamaProvider()
