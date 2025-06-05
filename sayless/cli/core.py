@@ -13,13 +13,13 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskPr
 from typing import Optional, Tuple
 import os
 import time
-from config import Config
-from ai_providers import OllamaProvider, OpenAIProvider
+from .config import Config
+from .ai_providers import OllamaProvider, OpenAIProvider
 import datetime
 from dateutil.parser import parse as parse_date
 from dateutil.relativedelta import relativedelta
 import asyncio
-from embeddings import CommitEmbeddings
+from .embeddings import CommitEmbeddings
 
 app = typer.Typer(help="🤖 AI-powered Git commit message generator")
 console = Console()

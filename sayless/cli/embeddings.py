@@ -5,14 +5,15 @@ import faiss
 import hashlib
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
-import datetime
 from rich.console import Console
 import pickle
-from config import Config
+from .config import Config
 import asyncio
 import aiohttp
 import requests
 from openai import AsyncOpenAI, OpenAI
+from datetime import datetime
+from .ai_providers import OpenAIProvider
 
 console = Console()
 settings = Config()

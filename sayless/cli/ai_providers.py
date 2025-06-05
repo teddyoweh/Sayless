@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 import requests
 from openai import OpenAI
 from rich.console import Console
-from setup import ensure_ollama_ready
+from .ollama_setup import ensure_ollama_ready
 
 console = Console()
 
