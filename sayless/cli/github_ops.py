@@ -307,6 +307,31 @@ Respond in this format:
             
             analysis = ai.generate_commit_message(analysis_prompt, model)
             
+            # Extract key information from analysis
+            change_type = 'feat'  # default
+            if 'Type of changes:' in analysis:
+                type_line = analysis.split('Type of changes:')[1].split('\n')[0].strip().lower()
+                if any(t in type_line for t in ['feat', 'fix', 'docs', 'style', 'refactor', 'perf', 'test', 'chore']):
+                    for t in ['feat', 'fix', 'docs', 'style', 'refactor', 'perf', 'test', 'chore']:
+                        if t in type_line:
+                            change_type = t
+                            break
+            
+            main_purpose = ""
+            if 'Main purpose:' in analysis:
+                main_purpose = analysis.split('Main purpose:')[1].split('\n')[0].strip()
+            
+            scope = ""
+            if 'Scope of changes:' in analysis:
+                scope = analysis.split('Scope of changes:')[1].split('\n')[0].strip()
+            
+            is_breaking = False
+            if 'Breaking changes:' in analysis:
+                is_breaking = 'yes' in analysis.split('Breaking changes:')[1].split('\n')[0].strip().lower()
+            
+            # Create the format string for the title format requirement
+            title_format = f"{change_type}({scope if scope else 'scope'}): description"
+            
             # Now use this analysis to generate the PR content
             pr_prompt = f"""Based on this analysis of the changes, generate a pull request:
 
@@ -320,18 +345,18 @@ Changes:
 {diff}
 
 Requirements:
-1. Title must be clear and follow conventional commit format
+1. Title must be clear and follow conventional commit format: {title_format}
 2. Description must be detailed but concise
 3. Include specific testing instructions
-4. Highlight any breaking changes or dependencies
+4. {"Highlight breaking changes and" if is_breaking else "Include any"} dependencies
 5. Focus on what reviewers need to know
 
 Format the response EXACTLY like this:
 
-Title: type(scope): concise description
+Title: {change_type}(scope): brief description
 
 ## Overview
-(2-3 sentences about the main changes and their purpose)
+{main_purpose or "(2-3 sentences about the main changes and their purpose)"}
 
 ## Changes
 - (bullet points of specific changes)
@@ -343,7 +368,7 @@ Title: type(scope): concise description
 - (any test data or setup needed)
 
 ## Notes
-- Breaking Changes: (if any)
+- Breaking Changes: {"Yes - " if is_breaking else "None"}
 - Dependencies: (if any)
 - Migration: (if needed)
 
@@ -353,46 +378,56 @@ Labels: feature, bug, documentation, enhancement, refactor, performance, testing
             
             # Parse response with improved error handling
             try:
-                # Extract title (first non-empty line)
-                lines = [l for l in response.split('\n') if l.strip()]
-                title = lines[0].replace('Title:', '').strip()
-                
-                # Validate title format
-                if not any(title.startswith(t) for t in ['feat', 'fix', 'docs', 'style', 'refactor', 'perf', 'test', 'chore']):
-                    # Try to infer type from analysis
-                    if 'Type of changes:' in analysis:
-                        change_type = analysis.split('Type of changes:')[1].split('\n')[0].strip().lower()
-                        if not title.startswith(f"{change_type}("):
-                            title = f"{change_type}: {title}"
-                
-                # Extract body (everything between title and labels)
+                # Extract title
+                title = None
                 body_lines = []
-                in_body = False
-                for line in lines[1:]:
-                    if line.lower().startswith('labels:'):
-                        break
-                    if line.startswith('##') or in_body:
-                        in_body = True
-                        body_lines.append(line)
-                
-                body = '\n'.join(body_lines).strip()
-                if not body:
-                    # Fallback to structured sections if body extraction fails
-                    body = "## Overview\n"
-                    body += analysis.split('Main purpose')[1].split('\n')[0].strip() + "\n\n"
-                    body += "## Changes\n"
-                    body += "- " + "\n- ".join(commits.split('\n')[:5]) + "\n\n"
-                    body += "## Testing\n- Please verify the changes work as expected\n\n"
-                    if 'Breaking changes: yes' in analysis.lower():
-                        body += "## Notes\n- Breaking Changes: Yes, please review carefully\n"
-                
-                # Extract labels
                 labels = []
-                for line in reversed(lines):
+                
+                lines = [l for l in response.split('\n') if l.strip()]
+                
+                # Find title
+                for line in lines:
+                    if line.startswith('Title:'):
+                        title = line.replace('Title:', '').strip()
+                        break
+                    elif any(line.startswith(f"{t}(") for t in ['feat', 'fix', 'docs', 'style', 'refactor', 'perf', 'test', 'chore']):
+                        title = line.strip()
+                        break
+                
+                # If no title found, construct one from analysis
+                if not title:
+                    scope_text = scope if scope else "general"
+                    title = f"{change_type}({scope_text}): {main_purpose or 'update codebase'}"
+                
+                # Extract body and labels
+                in_body = False
+                for line in lines:
+                    line = line.strip()
                     if line.lower().startswith('labels:'):
+                        # Extract labels
                         labels_text = line.split(':', 1)[1].strip()
                         labels = [l.strip() for l in labels_text.split(',') if l.strip()]
                         break
+                    elif line.startswith('##') or in_body:
+                        in_body = True
+                        body_lines.append(line)
+                
+                # Clean up body
+                body = '\n'.join(body_lines).strip()
+                if not body:
+                    # Construct a basic body from analysis
+                    body = '\n'.join([
+                        "## Overview",
+                        main_purpose or "Updates to the codebase",
+                        "",
+                        "## Changes",
+                        "- " + "\n- ".join(commits.split('\n')[:5]),
+                        "",
+                        "## Testing",
+                        "- Please verify the changes work as expected"
+                    ])
+                    if is_breaking:
+                        body += "\n\n## Notes\n- Breaking Changes: Yes - please review carefully"
                 
                 # If no labels found or invalid, infer from content
                 if not labels:
@@ -407,7 +442,35 @@ Labels: feature, bug, documentation, enhancement, refactor, performance, testing
                     'labels': labels
                 }
             except Exception as e:
-                raise ValueError(f"Failed to parse AI response: {str(e)}\nResponse:\n{response}")
+                # If parsing fails, create a basic PR from analysis
+                if task:
+                    progress.update(task, visible=False)
+                scope_text = scope if scope else "general"
+                title = f"{change_type}({scope_text}): {main_purpose or 'update codebase'}"
+                
+                # Create body using list join instead of f-string with newlines
+                body_parts = [
+                    "## Overview",
+                    main_purpose or "Updates to the codebase",
+                    "",
+                    "## Changes",
+                    "- " + "\n- ".join(commits.split('\n')[:5]),
+                    "",
+                    "## Testing",
+                    "- Please verify the changes work as expected"
+                ]
+                
+                if is_breaking:
+                    body_parts.extend(["", "## Notes", "- Breaking Changes: Yes - please review carefully"])
+                
+                body = '\n'.join(body_parts)
+                labels = infer_labels_from_content(title, body)
+                
+                return {
+                    'title': title,
+                    'body': body,
+                    'labels': labels
+                }
             
         except Exception as e:
             if task:
