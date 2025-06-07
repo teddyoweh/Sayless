@@ -304,37 +304,47 @@ Labels: comma-separated list from [feature, bug, documentation, enhancement, ref
 def create_pr(base: str = None, show_details: bool = False) -> None:
     """Create a pull request with AI-generated content"""
     github = GitHubAPI()
+    content = None
     
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
         console=console
     ) as progress:
-        # Generate PR content
-        content = generate_pr_content(progress=progress)
-        
-        # Show preview
-        console.print("\n[bold]Pull Request Preview[/bold]")
-        console.print(Panel(
-            "\n".join([
-                f"[bold cyan]Title:[/bold cyan] {content['title']}",
-                "",
-                f"[bold cyan]Body:[/bold cyan]",
-                content['body'],
-                "",
-                f"[bold cyan]Labels:[/bold cyan] {', '.join(content['labels'])}",
-            ]),
-            title="Preview",
-            border_style="cyan",
-            padding=(1, 2)
-        ))
-        
-        # Confirm creation
-        if not typer.confirm("\n💭 Create this pull request?", default=True):
-            console.print("\n[yellow]PR creation cancelled[/yellow]")
-            return
-        
-        # Create PR
+        try:
+            # Generate PR content
+            content = generate_pr_content(progress=progress)
+        except Exception as e:
+            console.print(Panel(f"[red]Failed to generate PR content: {str(e)}[/red]", title="Error", border_style="red"))
+            sys.exit(1)
+    
+    # Show preview outside of progress context
+    console.print("\n[bold]Pull Request Preview[/bold]")
+    console.print(Panel(
+        "\n".join([
+            f"[bold cyan]Title:[/bold cyan] {content['title']}",
+            "",
+            f"[bold cyan]Body:[/bold cyan]",
+            content['body'],
+            "",
+            f"[bold cyan]Labels:[/bold cyan] {', '.join(content['labels'])}",
+        ]),
+        title="Preview",
+        border_style="cyan",
+        padding=(1, 2)
+    ))
+    
+    # Confirm creation
+    if not typer.confirm("\n💭 Create this pull request?", default=True):
+        console.print("\n[yellow]PR creation cancelled[/yellow]")
+        return
+    
+    # Create PR in a new progress context
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console
+    ) as progress:
         task_create = progress.add_task("Creating pull request...", total=None)
         try:
             pr = github.create_pr(
