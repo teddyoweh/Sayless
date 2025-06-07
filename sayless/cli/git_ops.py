@@ -31,75 +31,28 @@ def get_current_branch() -> str:
 
 def sanitize_branch_name(name: str) -> str:
     """Convert a string into a valid git branch name"""
-    # Remove any error messages or common AI responses
-    error_starts = ['i apologize', 'i\'m sorry', 'error:', 'sorry,', 'it seems', 'please provide']
-    name_lower = name.lower()
-    if any(name_lower.startswith(start) for start in error_starts):
-        # Try to extract meaningful content after these phrases
-        for start in error_starts:
-            if name_lower.startswith(start):
-                name = name[len(start):].strip('., ')
-                break
-    
-    # Remove common filler words
-    filler_words = ['the', 'a', 'an', 'and', 'or', 'but', 'for', 'nor', 'on', 'at', 'to', 'for', 'in', 'of']
-    words = name.lower().split()
-    words = [w for w in words if w not in filler_words]
-    name = '-'.join(words)
-    
-    # Convert to lowercase and replace special characters
+    # Convert to lowercase
+    name = name.lower()
+    # Replace spaces and special characters with hyphens
     name = re.sub(r'[^a-z0-9]+', '-', name)
-    
     # Remove leading and trailing hyphens
     name = name.strip('-')
-    
-    # Limit length while keeping meaningful parts
+    # Limit length while preserving words
     if len(name) > 50:
         words = name.split('-')
-        shortened_words = []
+        shortened = []
         length = 0
         for word in words:
-            # Keep first and last word regardless of length
-            if not shortened_words or len(words) == len(shortened_words) + 1:
-                shortened_words.append(word)
-                length += len(word) + 1  # +1 for hyphen
-            # For middle words, keep if they're important or short
-            elif len(word) <= 8 or word in ['fix', 'feat', 'add', 'update', 'remove', 'improve']:
-                if length + len(word) + 1 <= 50:
-                    shortened_words.append(word)
-                    length += len(word) + 1
-        name = '-'.join(shortened_words)
-    
-    # Final cleanup
-    name = re.sub(r'-+', '-', name)  # Replace multiple hyphens with single hyphen
-    name = name.strip('-')
-    
-    # If name is empty after all processing, use a fallback
-    if not name:
-        name = "feature-update"
-    
+            if length + len(word) + 1 <= 50:  # +1 for the hyphen
+                shortened.append(word)
+                length += len(word) + 1
+            else:
+                break
+        name = '-'.join(shortened)
     return name
 
 def get_branch_type(description: str) -> str:
     """Use AI to determine the branch type based on description"""
-    # First try to infer type from the description itself
-    description_lower = description.lower()
-    type_indicators = {
-        'fix': ['fix', 'bug', 'issue', 'error', 'problem', 'crash'],
-        'feat': ['add', 'new', 'feature', 'implement', 'create'],
-        'docs': ['document', 'readme', 'guide', 'docs'],
-        'style': ['style', 'format', 'lint', 'prettier'],
-        'refactor': ['refactor', 'restructure', 'reorganize', 'cleanup'],
-        'perf': ['performance', 'optimize', 'speed', 'fast'],
-        'test': ['test', 'spec', 'coverage'],
-        'chore': ['chore', 'maintain', 'update', 'upgrade', 'bump']
-    }
-    
-    for branch_type, keywords in type_indicators.items():
-        if any(keyword in description_lower for keyword in keywords):
-            return branch_type
-    
-    # If no clear indication from description, use AI
     provider = settings.get_provider()
     model = settings.get_model()
     
@@ -108,7 +61,7 @@ Choose one of: feat, fix, docs, style, refactor, perf, test, chore
 
 Description: {description}
 
-Respond with ONLY the type (e.g., 'feat' or 'fix')."""
+Respond with ONLY the type (e.g., 'feat' or 'fix'). No explanation needed."""
 
     try:
         if provider == 'openai':
@@ -122,11 +75,39 @@ Respond with ONLY the type (e.g., 'feat' or 'fix')."""
         # Validate the response
         valid_types = {'feat', 'fix', 'docs', 'style', 'refactor', 'perf', 'test', 'chore'}
         if branch_type not in valid_types:
-            return 'feat'  # Default to feat if AI response is invalid
+            # Try to infer from description
+            desc_lower = description.lower()
+            if any(word in desc_lower for word in ['fix', 'bug', 'issue']):
+                return 'fix'
+            elif any(word in desc_lower for word in ['doc', 'readme']):
+                return 'docs'
+            elif any(word in desc_lower for word in ['refactor', 'clean']):
+                return 'refactor'
+            elif any(word in desc_lower for word in ['test']):
+                return 'test'
+            elif any(word in desc_lower for word in ['style', 'format']):
+                return 'style'
+            elif any(word in desc_lower for word in ['perf', 'optimize']):
+                return 'perf'
+            return 'feat'  # Default to feat if no match
         
         return branch_type
     except:
-        return 'feat'  # Default to feat if AI fails
+        # If AI fails, try to infer from description
+        desc_lower = description.lower()
+        if any(word in desc_lower for word in ['fix', 'bug', 'issue']):
+            return 'fix'
+        elif any(word in desc_lower for word in ['doc', 'readme']):
+            return 'docs'
+        elif any(word in desc_lower for word in ['refactor', 'clean']):
+            return 'refactor'
+        elif any(word in desc_lower for word in ['test']):
+            return 'test'
+        elif any(word in desc_lower for word in ['style', 'format']):
+            return 'style'
+        elif any(word in desc_lower for word in ['perf', 'optimize']):
+            return 'perf'
+        return 'feat'  # Default to feat if all else fails
 
 def get_staged_changes_description() -> str:
     """Get a description of staged changes using AI"""
@@ -154,22 +135,53 @@ def get_staged_changes_description() -> str:
                     # Remove conventional commit format if present
                     if '(' in description and '):' in description:
                         description = description.split('):')[1].strip()
+                    # Limit length
+                    words = description.split()
+                    description = ' '.join(words[:4])  # Limit to 4 words
                     return description
                 
             except Exception:
                 pass
             
-            raise ValueError("No staged changes found. Stage your changes first with 'git add'")
+            # Get list of modified files for context
+            modified_files = run_git_command(['diff', '--name-only']).stdout.strip().split('\n')
+            if modified_files and modified_files[0]:
+                file_context = "Modified files: " + ", ".join(modified_files[:3])
+            else:
+                file_context = "No files modified"
+            
+            raise ValueError(f"No staged changes. Stage changes with 'git add' first.\n{file_context}")
 
         provider = settings.get_provider()
         model = settings.get_model()
         
-        prompt = """Based on these staged changes, provide a brief, descriptive title for a branch name.
-Keep it concise and focused on the main purpose of the changes.
-Respond with ONLY the title, no additional text or formatting.
+        # Get list of modified files
+        modified_files = run_git_command(['diff', '--cached', '--name-only']).stdout.strip().split('\n')
+        files_context = ", ".join(modified_files[:3])
+        
+        prompt = f"""You are a branch name generator. Create a short, descriptive branch name based on these changes.
+Rules:
+1. Use 2-4 words maximum
+2. Focus on the main feature or purpose
+3. Be specific but concise
+4. Use only lowercase letters, numbers, and hyphens
+5. Keep total length under 40 characters
+6. NEVER include words like 'sorry', 'apologize', or 'need'
+7. NEVER explain or ask for more information
+
+Files changed: {files_context}
+
+Example good branch names:
+- add-user-auth
+- fix-login-bug
+- update-api-endpoints
+- improve-error-handling
+- refactor-db-queries
 
 Changes:
-{diff}"""
+{diff}
+
+Respond with ONLY the branch name, no other text."""
         
         if provider == 'openai':
             api_key = settings.get_openai_api_key()
@@ -178,6 +190,37 @@ Changes:
             ai = OllamaProvider()
         
         description = ai.generate_commit_message(prompt, model).strip()
+        
+        # Validate and clean up the response
+        description = description.lower()
+        
+        # Remove any conventional commit format if AI included it
+        if '(' in description and '):' in description:
+            description = description.split('):')[1].strip()
+        
+        # Remove common error phrases
+        error_phrases = ['sorry', 'apologize', 'need', 'please', 'could you', 'i am', "i'm", 'cannot', 'can not']
+        if any(phrase in description.lower() for phrase in error_phrases):
+            # Fall back to using modified files for branch name
+            if modified_files and modified_files[0]:
+                main_file = modified_files[0].split('/')[-1].split('.')[0]
+                action = 'update'
+                if 'test' in main_file.lower():
+                    action = 'add-tests'
+                elif 'doc' in main_file.lower() or 'readme' in main_file.lower():
+                    action = 'update-docs'
+                return f"{action}-{main_file}"
+            return "update-codebase"
+        
+        # Limit words and length
+        words = description.split()
+        description = ' '.join(words[:4])  # Limit to 4 words
+        
+        # Final validation
+        if len(description) > 40:
+            words = description.split('-')
+            description = '-'.join(words[:3])  # Take first 3 parts if still too long
+        
         return description
     except Exception as e:
         raise ValueError(f"Failed to generate branch name: {str(e)}")
@@ -225,6 +268,14 @@ def create_branch(description: str = None, checkout: bool = True, generate: bool
             # Generate branch name
             task_name = progress.add_task("Generating branch name...", total=None)
             branch_name = f"{branch_type}/{sanitize_branch_name(description)}"
+            
+            # Validate final branch name
+            if len(branch_name) > 50:
+                parts = branch_name.split('/')
+                type_part = parts[0]
+                name_part = parts[1].split('-')
+                branch_name = f"{type_part}/{'-'.join(name_part[:3])}"
+            
             progress.update(task_name, completed=True)
             
             # Create and checkout branch
