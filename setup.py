@@ -11,7 +11,7 @@ setup(
     description="AI Git Copilot / Autopilot",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/teddy/sayless",  # Update with your repo URL
+    url="https://github.com/teddyoweh/sayless",
     packages=find_packages(),
     classifiers=[
         "Development Status :: 4 - Beta",

@@ -76,12 +76,14 @@ def show_config_status():
     """Show current configuration status in a nice table"""
     table = Table(title="Current Configuration", show_header=False, title_style="bold cyan", border_style="cyan")
     provider = settings.get_provider()
-    has_key = bool(settings.get_openai_api_key())
+    has_openai_key = bool(settings.get_openai_api_key())
+    has_github_token = bool(settings.get_github_token())
     
     table.add_row("Provider", f"[green]{provider}[/green] {'(default)' if provider == 'openai' else '(local AI)'}")
     table.add_row("Model", f"[green]{settings.get_model()}[/green]")
     if provider == 'openai':
-        table.add_row("OpenAI API Key", f"[{'green' if has_key else 'red'}]{'configured' if has_key else 'not configured'}[/{'green' if has_key else 'red'}]")
+        table.add_row("OpenAI API Key", f"[{'green' if has_openai_key else 'red'}]{'configured' if has_openai_key else 'not configured'}[/{'green' if has_openai_key else 'red'}]")
+    table.add_row("GitHub Token", f"[{'green' if has_github_token else 'red'}]{'configured' if has_github_token else 'not configured'}[/{'green' if has_github_token else 'red'}]")
     
     console.print(table)
     console.print()
@@ -444,6 +446,7 @@ def switch(
 @app.command()
 def config(
     openai_key: Optional[str] = typer.Option(None, "--openai-key", help="Set OpenAI API key"),
+    github_token: Optional[str] = typer.Option(None, "--github-token", help="Set GitHub token"),
     use_openai: bool = typer.Option(False, "--use-openai", help="Use OpenAI (default)"),
     use_ollama: bool = typer.Option(False, "--use-ollama", help="Use Ollama (local AI)"),
     model: Optional[str] = typer.Option(None, "--model", help="Set the model to use"),
@@ -453,13 +456,23 @@ def config(
     if show:
         show_config_status()
         provider = settings.get_provider()
-        has_key = bool(settings.get_openai_api_key())
+        has_openai_key = bool(settings.get_openai_api_key())
+        has_github_token = bool(settings.get_github_token())
         
-        if not has_key and provider == 'openai':
+        if not has_openai_key and provider == 'openai':
             console.print(Panel(
                 "[yellow]OpenAI API key not configured[/yellow]\n"
                 "[blue]Quick setup:[/blue]\n"
                 "  sayless switch openai --key YOUR_API_KEY",
+                title="Warning",
+                border_style="yellow"
+            ))
+        
+        if not has_github_token:
+            console.print(Panel(
+                "[yellow]GitHub token not configured[/yellow]\n"
+                "[blue]Quick setup:[/blue]\n"
+                "  sayless config --github-token YOUR_TOKEN",
                 title="Warning",
                 border_style="yellow"
             ))
@@ -475,6 +488,9 @@ def config(
         if openai_key:
             settings.set_openai_api_key(openai_key)
             settings.set_provider('openai')  # Automatically switch to OpenAI when key is provided
+        
+        if github_token:
+            settings.set_github_token(github_token)
 
         if use_openai and use_ollama:
             progress.update(task, completed=True)
