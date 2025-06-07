@@ -2,6 +2,15 @@
 
 Your intelligent Git companion that streamlines repository workflows through AI. Sayless handles everything from commit messages to PR management, making version control more intuitive and efficient.
 
+## Overview
+
+Sayless is a powerful AI-powered Git automation tool that enhances your development workflow by:
+- Generating meaningful commit messages that follow best practices
+- Creating contextual branch names based on your changes
+- Managing pull requests with AI-generated descriptions and insights
+- Providing semantic search across your commit history
+- Generating comprehensive summaries of repository changes
+
 ## Core Capabilities
 
 ### Intelligent Git Operations
@@ -21,21 +30,39 @@ Your intelligent Git companion that streamlines repository workflows through AI.
 - Run everything locally with Ollama for complete privacy
 - Switch between providers seamlessly based on your needs
 
-## Quick Start
+## Installation
 
+### Prerequisites
+- Python 3.7+
+- Git
+- OpenAI API key (for cloud features) or Ollama (for local processing)
+
+### Install via pip
 ```bash
-# Install
 pip install sayless
+```
 
-# Configure with OpenAI
+### Initial Configuration
+
+#### Using OpenAI (Recommended)
+```bash
+# Set your OpenAI API key
 sayless config --openai-key YOUR_API_KEY
 
-# Or use Ollama locally
+# Or use environment variable
+export OPENAI_API_KEY=your_api_key
+```
+
+#### Using Ollama (Local AI)
+1. Install Ollama from [ollama.ai](https://ollama.ai)
+2. Switch to Ollama:
+```bash
 sayless switch ollama
 ```
 
-## Daily Workflow
+## Usage Guide
 
+### Quick Start
 ```bash
 # Generate commits
 sl g                    # Generate commit from staged changes
@@ -54,16 +81,200 @@ sl search "auth fixes"  # Find relevant commits
 sl since 1w            # Summarize last week's changes
 ```
 
-## Requirements
-- Python 3.7+
-- Git
-- OpenAI API key (for cloud features) or Ollama (for local processing)
+### Commit Message Generation
+
+Sayless helps you write better commit messages by analyzing your changes:
+
+```bash
+# Stage specific files
+git add file1.js file2.js
+sl g                    # Generate commit message
+
+# Stage and commit all changes
+sl g -a                 # Equivalent to: git add . && sayless generate
+
+# Preview without committing
+sl g --preview         # Show message without creating commit
+```
+
+#### Best Practices
+- Stage related changes together for more focused commit messages
+- Use `--preview` to review and refine messages before committing
+- Let Sayless handle conventional commit formatting automatically
+
+### Branch Management
+
+Create meaningful branch names and track changes effectively:
+
+```bash
+# Create branch from description
+sl branch "Implement user authentication system"
+# Creates: feat/implement-user-authentication-system
+
+# Generate branch name from staged changes
+git add .
+sl branch -g           # AI analyzes changes and creates branch
+
+# List branches with AI insights
+sl branches --details  # Shows branch summaries and analysis
+```
+
+#### Advanced Branch Options
+```bash
+# Create without switching
+sl branch "Add logging" --no-checkout
+
+# Auto-stage and generate name
+sl branch -g -a        # Stages changes and generates name
+
+# Custom branch type
+sl branch "Fix login bug" # Creates: fix/login-bug
+sl branch "Update docs"   # Creates: docs/update-docs
+```
+
+### Pull Request Management
+
+Create and manage PRs with AI-generated content:
+
+```bash
+# Create PR with AI-generated title and description
+sl pr create
+
+# Target specific base branch
+sl pr create --base develop
+
+# Create with detailed AI insights
+sl pr create --details
+
+# List PRs with analysis
+sl pr list --details
+```
+
+#### PR Best Practices
+- Stage all relevant changes before creating PR
+- Use `--details` for additional context and impact analysis
+- Review AI-generated content before confirming PR creation
+
+### Repository Analysis
+
+Get insights into your codebase and changes:
+
+```bash
+# Analyze specific commit
+sl summary <commit-hash> --detailed
+
+# Summarize recent changes
+sl since 1d            # Last 24 hours
+sl since 1w            # Last week
+sl since 1m            # Last month
+sl since 2023-01-01   # Since specific date
+
+# Save analysis to file
+sl since 1w --save    # Exports to markdown file
+```
+
+### Semantic Search
+
+Search through your commit history using natural language:
+
+```bash
+# Search commits
+sl search "authentication improvements"
+sl search "bug fixes in login system"
+sl search "performance optimizations"
+
+# Index all commits before searching
+sl search "database changes" --index-all
+
+# Limit results
+sl search "API updates" --limit 10
+```
+
+## Advanced Configuration
+
+### AI Provider Settings
+
+#### OpenAI Configuration
+```bash
+# Switch to OpenAI
+sl switch openai --key YOUR_API_KEY
+
+# Change model
+sl switch openai --model gpt-4
+```
+
+#### Ollama Configuration
+```bash
+# Switch to Ollama
+sl switch ollama
+
+# Change model
+sl switch ollama --model llama2
+```
+
+### Environment Variables
+- `OPENAI_API_KEY`: Your OpenAI API key
+- `GITHUB_TOKEN`: GitHub token for PR operations
+
+## Integration with CI/CD
+
+Sayless can be integrated into your CI/CD pipelines:
+
+```bash
+# Non-interactive commit generation
+sl g -a --yes
+
+# Automated PR creation
+sl pr create --no-confirm --base main
+```
+
+## Troubleshooting
+
+### Common Issues
+
+1. OpenAI API Issues
+```bash
+# Verify API key
+sl config --show
+
+# Switch to Ollama temporarily
+sl switch ollama
+```
+
+2. Git Repository Issues
+```bash
+# Check git status
+git status
+
+# Ensure changes are staged
+git add .
+```
+
+3. PR Creation Issues
+```bash
+# Verify GitHub token
+export GITHUB_TOKEN=your_token
+
+# Check repository access
+sl pr list
+```
 
 ## Contributing
-We welcome contributions! Check out our [contribution guidelines](CONTRIBUTING.md) to get started.
+
+We welcome contributions! Here's how you can help:
+
+1. Fork the repository
+2. Create your feature branch (`sl branch "Add new feature"`)
+3. Commit your changes (`sl g -a`)
+4. Push to your fork
+5. Create a Pull Request (`sl pr create`)
 
 ## License
-MIT License
+
+MIT License - See [LICENSE](LICENSE) for details.
 
 ## Support
-Open an issue on GitHub for bugs or feature requests. For usage questions, check our [documentation](https://sayless.dev). 
+
+- GitHub Issues: Report bugs and request features
+- Documentation: [sayless.dev](https://sayless.dev)
+- Community: Join our [Discord](https://discord.gg/sayless) 
