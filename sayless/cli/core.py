@@ -23,7 +23,7 @@ from .embeddings import CommitEmbeddings
 from .git_ops import create_branch, list_branches
 from .github_ops import create_pr, list_prs
 
-app = typer.Typer(help="AI Git Copilot / Autopilot")
+app = typer.Typer(help="🤖 AI-powered Git commit message generator")
 console = Console()
 settings = Config()
 
@@ -35,7 +35,7 @@ def show_welcome_message():
     model = settings.get_model()
     
     table = Table(show_header=False, box=None)
-    table.add_row("[bold cyan]Sayless[/bold cyan] ", "AI Git Copilot / Autopilot")
+    table.add_row("[bold cyan]Sayless[/bold cyan] 🤖", "AI Commit Message Generator")
     table.add_row("Provider", f"[green]{provider}[/green] {'(default)' if provider == 'openai' else '(local AI)'}")
     table.add_row("Model", f"[green]{model}[/green]")
     
@@ -521,6 +521,7 @@ def _generate_command(preview: bool, auto_add: bool):
             progress.update(task_check, completed=True)
             
             # Auto-add changes if requested
+            task_add = None
             if auto_add:
                 task_add = progress.add_task("Adding all changes...", total=None)
                 try:
@@ -534,12 +535,8 @@ def _generate_command(preview: bool, auto_add: bool):
             
             # Get staged changes
             task_diff = progress.add_task("Getting staged changes...", total=None)
-            try:
-                diff = get_staged_diff()
-                progress.update(task_diff, completed=True)
-            except Exception as e:
-                progress.update(task_diff, visible=False)
-                raise e
+            diff = get_staged_diff()
+            progress.update(task_diff, completed=True)
             
             # Generate message
             task_gen = progress.add_task("Generating commit message...", total=None)
@@ -566,12 +563,13 @@ def _generate_command(preview: bool, auto_add: bool):
                         sys.exit(1)
                 else:
                     progress.update(task_gen, visible=False)
-                    raise e
-        
+                    raise
         except Exception as e:
-            console.print(Panel(f"[red]Error: {str(e)}[/red]", title="Error", border_style="red"))
-            sys.exit(1)
-    
+            # Ensure all tasks are properly marked as completed or hidden
+            for task_id in progress.task_ids:
+                progress.update(task_id, visible=False)
+            raise e
+
     if message:
         # Show the generated message in a panel
         console.print(Panel(
@@ -594,27 +592,19 @@ def _generate_command(preview: bool, auto_add: bool):
                 try:
                     # Create commit
                     task_commit = commit_progress.add_task("Creating commit...", total=None)
-                    try:
-                        result = subprocess.run(
-                            ['git', 'commit', '-m', message],
-                            capture_output=True,
-                            text=True,
-                            check=True
-                        )
-                        commit_hash = subprocess.check_output(
-                            ['git', 'rev-parse', 'HEAD'],
-                            stderr=subprocess.PIPE
-                        ).decode('utf-8').strip()
-                        commit_progress.update(task_commit, completed=True)
-                        console.print("\n[bold green]✓[/bold green] Commit created successfully!")
-                    except subprocess.CalledProcessError as e:
-                        commit_progress.update(task_commit, visible=False)
-                        console.print(Panel(
-                            f"[red]Failed to create commit\nDetails: {e.stderr}[/red]",
-                            title="Error",
-                            border_style="red"
-                        ))
-                        sys.exit(1)
+                    result = subprocess.run(
+                        ['git', 'commit', '-m', message],
+                        capture_output=True,
+                        text=True,
+                        check=True
+                    )
+                    commit_hash = subprocess.check_output(
+                        ['git', 'rev-parse', 'HEAD'],
+                        stderr=subprocess.PIPE
+                    ).decode('utf-8').strip()
+                    
+                    commit_progress.update(task_commit, completed=True)
+                    console.print("\n[bold green]✓[/bold green] Commit created successfully!")
                     
                     # Index the commit
                     task_index = commit_progress.add_task("Indexing commit for search...", total=None)
@@ -629,10 +619,20 @@ def _generate_command(preview: bool, auto_add: bool):
                     except Exception as e:
                         commit_progress.update(task_index, visible=False)
                         console.print(f"\n[yellow]Note: Failed to index commit: {str(e)}[/yellow]")
-                        
-                except Exception as e:
-                    console.print(Panel(f"[red]Error: {str(e)}[/red]", title="Error", border_style="red"))
+                    
+                except subprocess.CalledProcessError as e:
+                    commit_progress.update(task_commit, visible=False)
+                    console.print(Panel(
+                        f"[red]Failed to create commit\nDetails: {e.stderr}[/red]",
+                        title="Error",
+                        border_style="red"
+                    ))
                     sys.exit(1)
+                except Exception as e:
+                    # Ensure all tasks are properly marked as completed or hidden
+                    for task_id in commit_progress.task_ids:
+                        commit_progress.update(task_id, visible=False)
+                    raise e
         else:
             console.print("\n[yellow]Commit cancelled[/yellow]")
 

@@ -80,9 +80,9 @@ def get_staged_changes_description() -> str:
         provider = settings.get_provider()
         model = settings.get_model()
         
-        prompt = f"""Based on these staged changes, provide a brief, descriptive title for a branch name.
-Keep it concise (max 50 chars) and focused on the main purpose of the changes.
-Respond with ONLY the title, no additional text, explanations, or formatting.
+        prompt = """Based on these staged changes, provide a brief, descriptive title for a branch name.
+Keep it concise and focused on the main purpose of the changes.
+Respond with ONLY the title, no additional text or formatting.
 
 Changes:
 {diff}"""
@@ -94,25 +94,9 @@ Changes:
             ai = OllamaProvider()
         
         description = ai.generate_commit_message(prompt, model).strip()
-        
-        # Validate the response
-        if len(description) > 100 or description.lower().startswith(('i apologize', 'i\'m sorry', 'error')):
-            # If AI returns an error or apology, use a fallback
-            files_changed = run_git_command(['diff', '--cached', '--name-only']).stdout.strip().split('\n')
-            if files_changed:
-                return f"update-{files_changed[0].split('/')[-1].split('.')[0]}"
-            return "feature-update"
-            
         return description
     except Exception as e:
-        # Provide a safe fallback name instead of propagating the error
-        try:
-            files_changed = run_git_command(['diff', '--cached', '--name-only']).stdout.strip().split('\n')
-            if files_changed:
-                return f"update-{files_changed[0].split('/')[-1].split('.')[0]}"
-        except:
-            pass
-        return "feature-update"
+        raise ValueError(f"Failed to generate branch name: {str(e)}")
 
 def auto_add_changes(progress: Progress = None) -> None:
     """Stage all changes with git add ."""
