@@ -141,7 +141,21 @@ def generate_pr_content(branch: str = None, progress: Progress = None) -> Dict[s
         commits = run_git_command(['log', '--oneline', f'{merge_base}..{branch}']).stdout
         
         if not commits.strip():
-            raise ValueError("No commits found in this branch")
+            if task:
+                progress.update(task, visible=False)
+            console.print(Panel(
+                "[red]No commits found in this branch[/red]\n\n"
+                "[yellow]To create a PR, you need to:[/yellow]\n"
+                "1. Create a branch (if not done):\n"
+                "   [blue]sl branch \"your feature description\"[/blue]\n"
+                "2. Make your changes and commit them:\n"
+                "   [blue]sl g -a[/blue] (auto-stages and commits changes)\n"
+                "3. Then create the PR:\n"
+                "   [blue]sl pr create --details[/blue]",
+                title="Workflow Guide",
+                border_style="yellow"
+            ))
+            sys.exit(1)
         
         provider = settings.get_provider()
         model = settings.get_model()
