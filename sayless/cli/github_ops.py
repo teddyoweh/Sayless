@@ -361,7 +361,36 @@ Labels: comma-separated list from [feature, bug, documentation, enhancement, ref
             progress.update(task, visible=False)
         raise e
 
-def create_pr(base: str = None, show_details: bool = False) -> None:
+def push_branch(branch: str) -> bool:
+    """Push branch to GitHub"""
+    try:
+        console.print("[yellow]Branch not found on GitHub. Pushing changes...[/yellow]")
+        result = run_git_command(['push', '-u', 'origin', branch], check=False)
+        if result.returncode == 0:
+            console.print("[green]✓[/green] Successfully pushed branch to GitHub")
+            return True
+        else:
+            error = result.stderr.decode('utf-8').strip()
+            if "remote: Repository not found" in error:
+                raise ValueError(
+                    "Repository not found on GitHub. Please ensure:\n"
+                    "1. The repository exists on GitHub\n"
+                    "2. You have write access to the repository\n"
+                    "3. Your GitHub token has the correct permissions"
+                )
+            elif "Permission denied" in error:
+                raise ValueError(
+                    "Permission denied. Please ensure:\n"
+                    "1. You have write access to the repository\n"
+                    "2. Your GitHub token has the correct permissions\n"
+                    "3. The repository URL is correct"
+                )
+            else:
+                raise ValueError(f"Failed to push branch: {error}")
+    except Exception as e:
+        raise ValueError(str(e))
+
+def create_pr(base: str = None, show_details: bool = False, auto_push: bool = True) -> None:
     """Create a pull request with AI-generated content"""
     github = GitHubAPI()
     content = None
@@ -407,6 +436,28 @@ def create_pr(base: str = None, show_details: bool = False) -> None:
     ) as progress:
         task_create = progress.add_task("Creating pull request...", total=None)
         try:
+            head = get_current_branch()
+            
+            # Try to validate PR parameters
+            try:
+                github.validate_pr_params(head, base or 'main')
+            except ValueError as e:
+                if auto_push and "not found on GitHub" in str(e):
+                    # Try to push the branch
+                    try:
+                        if push_branch(head):
+                            # Retry validation after successful push
+                            github.validate_pr_params(head, base or 'main')
+                        else:
+                            raise ValueError("Failed to push branch")
+                    except Exception as push_error:
+                        progress.update(task_create, visible=False)
+                        console.print(Panel(f"[red]{str(push_error)}[/red]", title="Error", border_style="red"))
+                        sys.exit(1)
+                else:
+                    raise e
+            
+            # Create PR
             pr = github.create_pr(
                 title=content['title'],
                 body=content['body'],

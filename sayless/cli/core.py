@@ -1067,13 +1067,14 @@ def pr_command(
     action: str = typer.Argument(..., help="Action to perform: create, list"),
     base: str = typer.Option(None, "--base", "-b", help="Base branch for PR (default: main)"),
     details: bool = typer.Option(False, "--details", "-d", help="Show AI-generated insights"),
+    no_push: bool = typer.Option(False, "--no-push", help="Don't automatically push branch to GitHub"),
 ):
     """Manage pull requests with AI assistance"""
     show_welcome_message()
     ensure_openai_configured()
     
     if action == "create":
-        create_pr(base=base, show_details=details)
+        create_pr(base=base, show_details=details, auto_push=not no_push)
     elif action == "list":
         list_prs(show_details=details)
     else:

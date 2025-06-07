@@ -172,6 +172,12 @@ sayless pr create
 # Create PR targeting specific base branch
 sayless pr create --base develop
 
+# Create PR with AI insights
+sayless pr create --details
+
+# Create PR without auto-pushing branch
+sayless pr create --no-push
+
 # List open PRs
 sayless pr list
 
