@@ -503,64 +503,74 @@ def _generate_command(preview: bool, auto_add: bool):
     commit_hash = None
     
     with progress:
-        # Check git repository
-        task_check = progress.add_task("Checking git repository...", total=None)
-        if not check_git_repo():
-            progress.update(task_check, visible=False)
-            panel = Panel(
-                "[red]Not in a git repository[/red]\n\n"
-                "[yellow]Please run this command inside a git repository.[/yellow]\n"
-                "To initialize a new git repository:\n"
-                "[blue]  git init[/blue]",
-                title="Error",
-                border_style="red"
-            )
-            console.print(panel)
-            sys.exit(1)
-        progress.update(task_check, completed=True)
-        
-        # Auto-add changes if requested
-        if auto_add:
-            task_add = progress.add_task("Adding all changes...", total=None)
-            try:
-                subprocess.run(['git', 'add', '.'], check=True, capture_output=True)
-                progress.update(task_add, completed=True)
-                console.print("[green]✓[/green] Added all changes")
-            except subprocess.CalledProcessError as e:
-                progress.update(task_add, visible=False)
-                console.print(Panel(f"[red]Failed to add changes: {e.stderr.decode('utf-8')}[/red]", title="Error", border_style="red"))
-                sys.exit(1)
-        
-        # Get staged changes
-        task_diff = progress.add_task("Getting staged changes...", total=None)
-        diff = get_staged_diff()
-        progress.update(task_diff, completed=True)
-        
-        # Generate message
-        task_gen = progress.add_task("Generating commit message...", total=None)
-        provider = get_ai_provider()
-        model = settings.get_model()
-        
         try:
-            message = provider.generate_commit_message(diff, model)
-        except Exception as e:
-            if isinstance(provider, OpenAIProvider):
-                progress.update(task_gen, description="OpenAI failed, trying Ollama fallback...")
+            # Check git repository
+            task_check = progress.add_task("Checking git repository...", total=None)
+            if not check_git_repo():
+                progress.update(task_check, visible=False)
+                panel = Panel(
+                    "[red]Not in a git repository[/red]\n\n"
+                    "[yellow]Please run this command inside a git repository.[/yellow]\n"
+                    "To initialize a new git repository:\n"
+                    "[blue]  git init[/blue]",
+                    title="Error",
+                    border_style="red"
+                )
+                console.print(panel)
+                sys.exit(1)
+            progress.update(task_check, completed=True)
+            
+            # Auto-add changes if requested
+            if auto_add:
+                task_add = progress.add_task("Adding all changes...", total=None)
                 try:
-                    fallback_provider = OllamaProvider()
-                    message = fallback_provider.generate_commit_message(diff, "llama2")
-                except Exception:
-                    progress.update(task_gen, visible=False)
-                    console.print(Panel(
-                        f"[red]Both OpenAI and Ollama failed.\nOriginal error: {str(e)}[/red]",
-                        title="Error",
-                        border_style="red"
-                    ))
+                    subprocess.run(['git', 'add', '.'], check=True, capture_output=True)
+                    progress.update(task_add, completed=True)
+                    console.print("[green]✓[/green] Added all changes")
+                except subprocess.CalledProcessError as e:
+                    progress.update(task_add, visible=False)
+                    console.print(Panel(f"[red]Failed to add changes: {e.stderr.decode('utf-8')}[/red]", title="Error", border_style="red"))
                     sys.exit(1)
-            else:
-                raise
+            
+            # Get staged changes
+            task_diff = progress.add_task("Getting staged changes...", total=None)
+            try:
+                diff = get_staged_diff()
+                progress.update(task_diff, completed=True)
+            except Exception as e:
+                progress.update(task_diff, visible=False)
+                raise e
+            
+            # Generate message
+            task_gen = progress.add_task("Generating commit message...", total=None)
+            provider = get_ai_provider()
+            model = settings.get_model()
+            
+            try:
+                message = provider.generate_commit_message(diff, model)
+                progress.update(task_gen, completed=True)
+            except Exception as e:
+                if isinstance(provider, OpenAIProvider):
+                    progress.update(task_gen, description="OpenAI failed, trying Ollama fallback...")
+                    try:
+                        fallback_provider = OllamaProvider()
+                        message = fallback_provider.generate_commit_message(diff, "llama2")
+                        progress.update(task_gen, completed=True)
+                    except Exception:
+                        progress.update(task_gen, visible=False)
+                        console.print(Panel(
+                            f"[red]Both OpenAI and Ollama failed.\nOriginal error: {str(e)}[/red]",
+                            title="Error",
+                            border_style="red"
+                        ))
+                        sys.exit(1)
+                else:
+                    progress.update(task_gen, visible=False)
+                    raise e
         
-        progress.update(task_gen, completed=True)
+        except Exception as e:
+            console.print(Panel(f"[red]Error: {str(e)}[/red]", title="Error", border_style="red"))
+            sys.exit(1)
     
     if message:
         # Show the generated message in a panel
@@ -576,45 +586,52 @@ def _generate_command(preview: bool, auto_add: bool):
 
         # Ask for confirmation with styled prompt
         if typer.confirm("\n💭 Do you want to create the commit with this message?"):
-            with progress:
-                task_commit = progress.add_task("Creating commit...", total=None)
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console
+            ) as commit_progress:
                 try:
-                    # Create commit and get its hash
-                    result = subprocess.run(
-                        ['git', 'commit', '-m', message],
-                        capture_output=True,
-                        text=True,
-                        check=True
-                    )
-                    commit_hash = subprocess.check_output(
-                        ['git', 'rev-parse', 'HEAD'],
-                        stderr=subprocess.PIPE
-                    ).decode('utf-8').strip()
-                    
-                    progress.update(task_commit, completed=True)
-                    console.print("\n[bold green]✓[/bold green] Commit created successfully!")
+                    # Create commit
+                    task_commit = commit_progress.add_task("Creating commit...", total=None)
+                    try:
+                        result = subprocess.run(
+                            ['git', 'commit', '-m', message],
+                            capture_output=True,
+                            text=True,
+                            check=True
+                        )
+                        commit_hash = subprocess.check_output(
+                            ['git', 'rev-parse', 'HEAD'],
+                            stderr=subprocess.PIPE
+                        ).decode('utf-8').strip()
+                        commit_progress.update(task_commit, completed=True)
+                        console.print("\n[bold green]✓[/bold green] Commit created successfully!")
+                    except subprocess.CalledProcessError as e:
+                        commit_progress.update(task_commit, visible=False)
+                        console.print(Panel(
+                            f"[red]Failed to create commit\nDetails: {e.stderr}[/red]",
+                            title="Error",
+                            border_style="red"
+                        ))
+                        sys.exit(1)
                     
                     # Index the commit
-                    task_index = progress.add_task("Indexing commit for search...", total=None)
+                    task_index = commit_progress.add_task("Indexing commit for search...", total=None)
                     try:
                         success = asyncio.run(index_commit(commit_hash))
                         if success:
-                            progress.update(task_index, completed=True)
+                            commit_progress.update(task_index, completed=True)
                             console.print("[green]✓[/green] Commit indexed for search")
                         else:
-                            progress.update(task_index, visible=False)
+                            commit_progress.update(task_index, visible=False)
                             console.print("\n[yellow]Note: Failed to index commit[/yellow]")
                     except Exception as e:
-                        progress.update(task_index, visible=False)
+                        commit_progress.update(task_index, visible=False)
                         console.print(f"\n[yellow]Note: Failed to index commit: {str(e)}[/yellow]")
-                    
-                except subprocess.CalledProcessError as e:
-                    progress.update(task_commit, visible=False)
-                    console.print(Panel(
-                        f"[red]Failed to create commit\nDetails: {e.stderr}[/red]",
-                        title="Error",
-                        border_style="red"
-                    ))
+                        
+                except Exception as e:
+                    console.print(Panel(f"[red]Error: {str(e)}[/red]", title="Error", border_style="red"))
                     sys.exit(1)
         else:
             console.print("\n[yellow]Commit cancelled[/yellow]")

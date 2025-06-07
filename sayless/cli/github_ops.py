@@ -566,32 +566,70 @@ def list_prs(show_details: bool = False) -> None:
 
 def get_pr_insights(pr: Dict) -> str:
     """Generate AI insights for a pull request"""
-    provider = settings.get_provider()
-    model = settings.get_model()
-    
-    # Get PR details
-    files_changed = len(pr['changed_files'])
-    additions = pr['additions']
-    deletions = pr['deletions']
-    
-    prompt = f"""Analyze this pull request and provide a one-line insight:
+    try:
+        provider = settings.get_provider()
+        model = settings.get_model()
+        
+        # Get PR details with error handling
+        try:
+            files_changed = pr.get('changed_files', 0)
+            additions = pr.get('additions', 0)
+            deletions = pr.get('deletions', 0)
+            labels = [l.get('name', '') for l in pr.get('labels', [])]
+            
+            # Get the diff for better context
+            head = pr.get('head', {}).get('sha')
+            base = pr.get('base', {}).get('sha')
+            if head and base:
+                diff = run_git_command(['diff', '--stat', base, head]).stdout
+            else:
+                diff = "Diff not available"
+            
+        except Exception as e:
+            console.print(f"[yellow]Warning: Could not get complete PR details: {str(e)}[/yellow]")
+            diff = "Diff not available"
+        
+        prompt = f"""Analyze this pull request and provide a concise but informative insight:
 
-Title: {pr['title']}
-Description: {pr['body']}
+Title: {pr.get('title', 'No title')}
+Description: {pr.get('body', 'No description')}
 Files Changed: {files_changed}
 Additions: {additions}
 Deletions: {deletions}
-Labels: {', '.join(l['name'] for l in pr['labels'])}
+Labels: {', '.join(labels)}
 
-Focus on risk level, complexity, and key areas of change. Keep it concise."""
-    
-    try:
-        if provider == 'openai':
-            api_key = settings.get_openai_api_key()
-            ai = OpenAIProvider(api_key)
-        else:
-            ai = OllamaProvider()
+Changes:
+{diff}
+
+Provide a one-line analysis that covers:
+1. The main purpose of the changes
+2. Complexity level (low/medium/high)
+3. Potential impact
+4. Any notable concerns
+
+Keep it concise but informative."""
         
-        return ai.generate_commit_message(prompt, model).strip()
-    except:
-        return "Unable to generate insights" 
+        try:
+            if provider == 'openai':
+                api_key = settings.get_openai_api_key()
+                ai = OpenAIProvider(api_key)
+            else:
+                ai = OllamaProvider()
+            
+            insight = ai.generate_commit_message(prompt, model).strip()
+            
+            # Validate the insight
+            if not insight or insight.lower().startswith(('error', 'i apologize', 'i\'m sorry')):
+                return "Simple change with low complexity. Review recommended for validation."
+                
+            return insight
+            
+        except Exception as e:
+            console.print(f"[yellow]Warning: AI generation failed: {str(e)}[/yellow]")
+            # Provide a basic insight based on available data
+            complexity = "high" if files_changed > 10 or (additions + deletions) > 500 else "medium" if files_changed > 5 or (additions + deletions) > 200 else "low"
+            return f"Changes affecting {files_changed} files with {complexity} complexity. Manual review recommended."
+            
+    except Exception as e:
+        console.print(f"[yellow]Warning: Failed to generate insights: {str(e)}[/yellow]")
+        return "Unable to analyze PR. Please review changes manually." 
