@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="sayless",
-    version="0.1.0",
+    version="0.2.0",
     author="Teddy",
     author_email="",  # Add your email
     description="AI Git Copilot / Autopilot",
@@ -30,11 +30,11 @@ setup(
     python_requires=">=3.7",
     install_requires=[
         "typer>=0.9.0",
-        "rich>=10.0.0",
-        "openai>=1.0.0",
+        "rich>=13.7.0",
+        "openai>=1.12.0",
         "python-dateutil>=2.8.2",
-        "numpy>=1.19.0",
-        "requests>=2.25.0",
+        "numpy>=1.24.0",
+        "requests>=2.31.0",
         "tqdm>=4.65.0",
         "pydantic>=2.0.0",
         "httpx>=0.24.0",
