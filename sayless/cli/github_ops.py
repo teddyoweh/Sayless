@@ -38,41 +38,101 @@ class GitHubAPI:
         }
         
         # Get repository info
-        self.repo_url = run_git_command(['config', '--get', 'remote.origin.url']).stdout.strip()
-        if "github.com" not in self.repo_url:
-            console.print("[red]Not a GitHub repository[/red]")
+        try:
+            self.repo_url = run_git_command(['config', '--get', 'remote.origin.url']).stdout.strip()
+            if "github.com" not in self.repo_url:
+                raise ValueError("Not a GitHub repository")
+            
+            # Extract owner and repo from URL
+            self.repo_url = self.repo_url.rstrip('.git')
+            parts = self.repo_url.split('github.com/')[-1].split('/')
+            self.owner = parts[-2]
+            self.repo = parts[-1]
+        except Exception as e:
+            console.print(Panel(
+                "[red]Failed to get repository information[/red]\n\n"
+                "[yellow]Please ensure:[/yellow]\n"
+                "1. You're in a git repository\n"
+                "2. The repository has a GitHub remote\n"
+                "3. You have access to the repository",
+                title="Repository Error",
+                border_style="red"
+            ))
             sys.exit(1)
-        
-        # Extract owner and repo from URL
-        self.repo_url = self.repo_url.rstrip('.git')
-        parts = self.repo_url.split('github.com/')[-1].split('/')
-        self.owner = parts[-2]
-        self.repo = parts[-1]
+
+    def validate_pr_params(self, head: str, base: str) -> None:
+        """Validate PR parameters before creation"""
+        try:
+            # Check if base branch exists
+            url = f"{self.api_url}/repos/{self.owner}/{self.repo}/branches/{base}"
+            response = requests.get(url, headers=self.headers)
+            if response.status_code != 200:
+                raise ValueError(f"Base branch '{base}' not found")
+            
+            # Check if head branch exists and has commits
+            url = f"{self.api_url}/repos/{self.owner}/{self.repo}/branches/{head}"
+            response = requests.get(url, headers=self.headers)
+            if response.status_code != 200:
+                raise ValueError(f"Current branch '{head}' not found on GitHub. Push your changes first:\n[blue]git push -u origin {head}[/blue]")
+            
+            # Check if PR already exists
+            url = f"{self.api_url}/repos/{self.owner}/{self.repo}/pulls"
+            params = {"head": f"{self.owner}:{head}", "base": base, "state": "open"}
+            response = requests.get(url, headers=self.headers, params=params)
+            if response.status_code == 200 and response.json():
+                existing_pr = response.json()[0]
+                raise ValueError(
+                    f"A PR already exists for this branch:\n"
+                    f"#{existing_pr['number']} - {existing_pr['title']}\n"
+                    f"URL: {existing_pr['html_url']}"
+                )
+            
+        except requests.exceptions.RequestException as e:
+            raise ValueError(f"Failed to validate PR parameters: {str(e)}")
 
     def create_pr(self, title: str, body: str, base: str = "main", labels: List[str] = None) -> Dict:
         """Create a pull request"""
         head = get_current_branch()
         
-        url = f"{self.api_url}/repos/{self.owner}/{self.repo}/pulls"
-        data = {
-            "title": title,
-            "body": body,
-            "head": head,
-            "base": base
-        }
-        
-        response = requests.post(url, headers=self.headers, json=data)
-        if response.status_code != 201:
-            raise Exception(f"Failed to create PR: {response.json().get('message', '')}")
-        
-        pr = response.json()
-        
-        # Add labels if provided
-        if labels:
-            labels_url = f"{self.api_url}/repos/{self.owner}/{self.repo}/issues/{pr['number']}/labels"
-            requests.post(labels_url, headers=self.headers, json=labels)
-        
-        return pr
+        try:
+            # Validate parameters first
+            self.validate_pr_params(head, base)
+            
+            # Create PR
+            url = f"{self.api_url}/repos/{self.owner}/{self.repo}/pulls"
+            data = {
+                "title": title,
+                "body": body,
+                "head": head,
+                "base": base
+            }
+            
+            response = requests.post(url, headers=self.headers, json=data)
+            if response.status_code != 201:
+                error_data = response.json()
+                error_msg = error_data.get('message', '')
+                errors = error_data.get('errors', [])
+                error_details = '\n'.join(f"- {e.get('message', '')}" for e in errors) if errors else ''
+                
+                raise ValueError(
+                    f"{error_msg}\n{error_details}\n\n"
+                    "[yellow]Common issues:[/yellow]\n"
+                    "1. Branch not pushed to GitHub\n"
+                    "2. No commits in branch\n"
+                    "3. Branch already has an open PR"
+                )
+            
+            pr = response.json()
+            
+            # Add labels if provided
+            if labels:
+                labels_url = f"{self.api_url}/repos/{self.owner}/{self.repo}/issues/{pr['number']}/labels"
+                requests.post(labels_url, headers=self.headers, json=labels)
+            
+            return pr
+            
+        except Exception as e:
+            raise ValueError(str(e))
 
     def list_prs(self, state: str = "open") -> List[Dict]:
         """List pull requests"""
