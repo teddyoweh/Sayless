@@ -231,25 +231,30 @@ Commits:
 Changes:
 {diff}
 
-You MUST respond in this EXACT format:
-<title>
-Brief, descriptive PR title
-</title>
+Generate a clear, descriptive PR that explains the changes, their purpose, and how to test them.
+Focus on making the description helpful for reviewers.
 
-<body>
+DO NOT include any XML-like tags in your response.
+Instead, format your response exactly like this:
+
+Title: Brief, descriptive title (use conventional commit format)
+
 ## Changes
-- Key changes and their purpose
+- Key changes and their purpose (bullet points)
+- Impact of these changes
+- Any breaking changes or dependencies
 
 ## Testing
 - How to test these changes
+- Expected outcomes
+- Any specific test cases
 
 ## Additional Notes
-- Any important considerations
-</body>
+- Important considerations
+- Related issues or PRs
+- Any follow-up tasks needed
 
-<labels>
-Comma-separated list of relevant labels from: feature, bug, documentation, enhancement, refactor, performance, testing, maintenance
-</labels>"""
+Labels: comma-separated list from [feature, bug, documentation, enhancement, refactor, performance, testing, maintenance]"""
         
         if provider == 'openai':
             api_key = settings.get_openai_api_key()
@@ -258,18 +263,43 @@ Comma-separated list of relevant labels from: feature, bug, documentation, enhan
             ai = OllamaProvider()
         
         response = ai.generate_commit_message(prompt, model)
-        content = parse_ai_response(response)
         
-        if task:
-            progress.update(task, completed=True)
-        
-        return content
-        
+        # Parse response
+        try:
+            # Extract title (first non-empty line)
+            lines = [l for l in response.split('\n') if l.strip()]
+            title = lines[0].replace('Title:', '').strip()
+            
+            # Extract body (everything after title)
+            body = '\n'.join(lines[1:]).strip()
+            
+            # Extract labels (last line if it starts with "Labels:")
+            labels = []
+            if lines[-1].lower().startswith('labels:'):
+                labels_text = lines[-1].split(':', 1)[1].strip()
+                labels = [l.strip() for l in labels_text.split(',') if l.strip()]
+                # Remove labels line from body
+                body = '\n'.join(lines[1:-1]).strip()
+            
+            # If no labels found or invalid, infer from content
+            if not labels:
+                labels = infer_labels_from_content(title, body)
+            
+            if task:
+                progress.update(task, completed=True)
+            
+            return {
+                'title': title,
+                'body': body,
+                'labels': labels
+            }
+        except Exception as e:
+            raise ValueError(f"Failed to parse AI response: {str(e)}\nResponse:\n{response}")
+            
     except Exception as e:
         if task:
             progress.update(task, visible=False)
-        console.print(Panel(f"[red]Failed to generate PR content: {str(e)}[/red]", title="Error", border_style="red"))
-        sys.exit(1)
+        raise e
 
 def create_pr(base: str = None, show_details: bool = False) -> None:
     """Create a pull request with AI-generated content"""
