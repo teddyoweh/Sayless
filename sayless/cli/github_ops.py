@@ -8,6 +8,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 import requests
 import json
 import os
+import typer
 from .ai_providers import OpenAIProvider, OllamaProvider
 from .config import Config
 from .git_ops import run_git_command, get_current_branch
@@ -285,15 +286,21 @@ def create_pr(base: str = None, show_details: bool = False) -> None:
         # Show preview
         console.print("\n[bold]Pull Request Preview[/bold]")
         console.print(Panel(
-            f"[bold cyan]Title:[/bold cyan] {content['title']}\n\n"
-            f"[bold cyan]Body:[/bold cyan]\n{content['body']}\n\n"
-            f"[bold cyan]Labels:[/bold cyan] {', '.join(content['labels'])}",
+            "\n".join([
+                f"[bold cyan]Title:[/bold cyan] {content['title']}",
+                "",
+                f"[bold cyan]Body:[/bold cyan]",
+                content['body'],
+                "",
+                f"[bold cyan]Labels:[/bold cyan] {', '.join(content['labels'])}",
+            ]),
             title="Preview",
-            border_style="cyan"
+            border_style="cyan",
+            padding=(1, 2)
         ))
         
         # Confirm creation
-        if not typer.confirm("\n💭 Do you want to create this pull request?"):
+        if not typer.confirm("\n💭 Create this pull request?", default=True):
             console.print("\n[yellow]PR creation cancelled[/yellow]")
             return
         
@@ -308,7 +315,14 @@ def create_pr(base: str = None, show_details: bool = False) -> None:
             )
             progress.update(task_create, completed=True)
             
-            console.print(f"\n[bold green]✓[/bold green] Pull request created: [link={pr['html_url']}]{pr['html_url']}[/link]")
+            # Show success message with PR link
+            console.print(Panel(
+                f"[green]✓ Pull request created successfully![/green]\n\n"
+                f"View PR: [link={pr['html_url']}]{pr['html_url']}[/link]",
+                title="Success",
+                border_style="green",
+                padding=(1, 2)
+            ))
             
             # Show details if requested
             if show_details:
@@ -319,7 +333,8 @@ def create_pr(base: str = None, show_details: bool = False) -> None:
                     console.print(Panel(
                         f"[bold cyan]AI Insights:[/bold cyan]\n{insights}",
                         title="PR Analysis",
-                        border_style="cyan"
+                        border_style="cyan",
+                        padding=(1, 2)
                     ))
                 except Exception:
                     progress.update(task_insights, visible=False)
@@ -327,7 +342,11 @@ def create_pr(base: str = None, show_details: bool = False) -> None:
             
         except Exception as e:
             progress.update(task_create, visible=False)
-            console.print(Panel(f"[red]Failed to create PR: {str(e)}[/red]", title="Error", border_style="red"))
+            console.print(Panel(
+                f"[red]Failed to create PR: {str(e)}[/red]",
+                title="Error",
+                border_style="red"
+            ))
             sys.exit(1)
 
 def list_prs(show_details: bool = False) -> None:
