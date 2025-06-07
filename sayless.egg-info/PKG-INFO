@@ -85,11 +85,19 @@ sayless switch ollama
 # Stage your changes first
 git add .
 
-# Generate and create a commit
+# Generate and create a commit (full command)
 sayless generate
+
+# Generate and create a commit (short alias)
+sl g
 
 # Preview without committing
 sayless generate --preview
+
+# Auto-stage all changes and generate commit
+sayless generate -a
+# or
+sl g -a
 ```
 
 ### Search Commits
@@ -131,6 +139,37 @@ sayless switch ollama
 # Change models
 sayless switch openai --model gpt-4
 sayless switch ollama --model llama2
+```
+
+### Branch Management
+```bash
+# Create a new branch with AI-generated name
+sayless branch "Add user authentication system"
+# Creates and switches to branch like: feat/add-user-authentication-system
+
+# Create branch without switching to it
+sayless branch "Add logging system" --no-checkout
+
+# List branches
+sayless branches
+
+# List branches with AI-generated summaries
+sayless branches --details
+```
+
+### Pull Request Management
+```bash
+# Create a PR with AI-generated title, description, and labels
+sayless pr create
+
+# Create PR targeting specific base branch
+sayless pr create --base develop
+
+# List open PRs
+sayless pr list
+
+# List PRs with AI-generated insights
+sayless pr list --details
 ```
 
 ## Requirements

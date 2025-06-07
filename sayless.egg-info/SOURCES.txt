@@ -13,4 +13,6 @@ sayless/cli/ai_providers.py
 sayless/cli/config.py
 sayless/cli/core.py
 sayless/cli/embeddings.py
+sayless/cli/git_ops.py
+sayless/cli/github_ops.py
 sayless/cli/ollama_setup.py
