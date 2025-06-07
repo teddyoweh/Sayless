@@ -312,9 +312,31 @@ def format_date(date_str):
 def get_commit_details_for_hash(commit_hash: str) -> Tuple[str, str, str]:
     """Get commit message, diff and date for a commit hash"""
     try:
+        # Validate commit hash exists
+        try:
+            # Try to resolve the commit hash
+            full_hash = run_git_command(['rev-parse', '--verify', commit_hash]).stdout.strip()
+        except subprocess.CalledProcessError:
+            # Get list of recent commits for context
+            recent_commits = run_git_command(
+                ['log', '--oneline', '-n', '5'],
+                check=False
+            ).stdout.strip().split('\n')
+            
+            commits_context = "\nRecent commits:"
+            for commit in recent_commits:
+                if commit:  # Check if line is not empty
+                    commits_context += f"\n{commit}"
+            
+            raise ValueError(
+                f"Invalid commit hash: '{commit_hash}'\n"
+                "Please provide a valid commit hash or prefix."
+                f"{commits_context}"
+            )
+        
         # Get commit message and date
         commit_info = subprocess.check_output(
-            ['git', 'show', '-s', '--format=%B%n%aI', commit_hash],
+            ['git', 'show', '-s', '--format=%B%n%aI', full_hash],
             stderr=subprocess.PIPE
         ).decode('utf-8').strip().split('\n')
         
@@ -323,7 +345,7 @@ def get_commit_details_for_hash(commit_hash: str) -> Tuple[str, str, str]:
         
         # Get commit diff
         diff = subprocess.check_output(
-            ['git', 'show', '--no-color', '--format=', commit_hash],
+            ['git', 'show', '--no-color', '--format=', full_hash],
             stderr=subprocess.PIPE
         ).decode('utf-8').strip()
         
@@ -638,7 +660,7 @@ def _generate_command(preview: bool, auto_add: bool):
 
 @app.command()
 def summary(
-    commit_hash: str = typer.Argument(..., help="The commit hash to summarize"),
+    commit_hash: str = typer.Argument(..., help="The commit hash or prefix to summarize"),
     detailed: bool = typer.Option(False, "--detailed", "-d", help="Show a more detailed analysis"),
 ):
     """Generate an AI-powered summary of a specific commit"""
@@ -692,17 +714,12 @@ Respond with just the summary, focusing on the practical impact."""
             # Get AI summary with fallback
             try:
                 provider = get_ai_provider()
-                summary_text = asyncio.run(provider.generate_commit_message(prompt, settings.get_model()))
+                summary_text = provider.generate_commit_message(prompt, settings.get_model())
             except Exception as e:
                 if "Connection" in str(e) and isinstance(provider, OpenAIProvider):
                     progress.update(task, description="OpenAI connection failed, using local Ollama...")
                     fallback_provider = OllamaProvider()
-                    summary_text = asyncio.run(
-                        asyncio.get_event_loop().run_in_executor(
-                            None,
-                            lambda: fallback_provider.generate_commit_message(prompt, "llama2")
-                        )
-                    )
+                    summary_text = fallback_provider.generate_commit_message(prompt, "llama2")
                 else:
                     raise
             
@@ -769,7 +786,7 @@ Respond with just the summary, focusing on the practical impact."""
                 ))
             else:
                 console.print(Panel(
-                    f"[red]Failed to analyze commit: {str(e)}[/red]",
+                    f"[red]{str(e)}[/red]",
                     title="⚠️ Error",
                     border_style="red"
                 ))
