@@ -84,31 +84,69 @@ class GitHubAPI:
         
         return response.json()
 
-def generate_pr_content(branch: str = None) -> Dict[str, str]:
+def parse_ai_response(response: str) -> Dict[str, str]:
+    """Parse AI response with robust error handling"""
+    try:
+        # Extract title
+        title_parts = response.split('<title>')
+        if len(title_parts) < 2:
+            raise ValueError("Could not find title section")
+        title = title_parts[1].split('</title>')[0].strip()
+        
+        # Extract body
+        body_parts = response.split('<body>')
+        if len(body_parts) < 2:
+            raise ValueError("Could not find body section")
+        body = body_parts[1].split('</body>')[0].strip()
+        
+        # Extract labels
+        labels_parts = response.split('<labels>')
+        if len(labels_parts) < 2:
+            raise ValueError("Could not find labels section")
+        labels_text = labels_parts[1].split('</labels>')[0].strip()
+        labels = [l.strip() for l in labels_text.split(',') if l.strip()]
+        
+        # Validate parsed content
+        if not title:
+            raise ValueError("Empty title")
+        if not body:
+            raise ValueError("Empty body")
+        if not labels:
+            labels = ["enhancement"]  # Default label if none provided
+        
+        return {
+            'title': title,
+            'body': body,
+            'labels': labels
+        }
+    except Exception as e:
+        raise ValueError(f"Failed to parse AI response: {str(e)}\nResponse: {response}")
+
+def generate_pr_content(branch: str = None, progress: Progress = None) -> Dict[str, str]:
     """Generate PR title, body, and labels using AI"""
     if not branch:
         branch = get_current_branch()
     
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        console=console
-    ) as progress:
+    task = None
+    if progress:
         task = progress.add_task("Analyzing changes...", total=None)
+    
+    try:
+        # Get base branch
+        base_branch = 'main' if run_git_command(['rev-parse', '--verify', 'main'], check=False).returncode == 0 else 'master'
         
-        try:
-            # Get base branch
-            base_branch = 'main' if run_git_command(['rev-parse', '--verify', 'main'], check=False).returncode == 0 else 'master'
-            
-            # Get changes
-            merge_base = run_git_command(['merge-base', base_branch, branch]).stdout.strip()
-            diff = run_git_command(['diff', merge_base, branch]).stdout
-            commits = run_git_command(['log', '--oneline', f'{merge_base}..{branch}']).stdout
-            
-            provider = settings.get_provider()
-            model = settings.get_model()
-            
-            prompt = f"""Based on these changes, generate a pull request title and description.
+        # Get changes
+        merge_base = run_git_command(['merge-base', base_branch, branch]).stdout.strip()
+        diff = run_git_command(['diff', merge_base, branch]).stdout
+        commits = run_git_command(['log', '--oneline', f'{merge_base}..{branch}']).stdout
+        
+        if not commits.strip():
+            raise ValueError("No commits found in this branch")
+        
+        provider = settings.get_provider()
+        model = settings.get_model()
+        
+        prompt = f"""Based on these changes, generate a pull request title and description.
 The changes are:
 
 Commits:
@@ -117,7 +155,7 @@ Commits:
 Changes:
 {diff}
 
-Respond in this format:
+You MUST respond in this EXACT format:
 <title>
 Brief, descriptive PR title
 </title>
@@ -136,34 +174,28 @@ Brief, descriptive PR title
 <labels>
 Comma-separated list of relevant labels from: feature, bug, documentation, enhancement, refactor, performance, testing, maintenance
 </labels>"""
-            
-            if provider == 'openai':
-                api_key = settings.get_openai_api_key()
-                ai = OpenAIProvider(api_key)
-            else:
-                ai = OllamaProvider()
-            
-            response = ai.generate_commit_message(prompt, model)
-            
-            # Parse response
-            title = response.split('<title>')[1].split('</title>')[0].strip()
-            body = response.split('<body>')[1].split('</body>')[0].strip()
-            labels = response.split('<labels>')[1].split('</labels>')[0].strip().split(',')
-            labels = [l.strip() for l in labels]
-            
+        
+        if provider == 'openai':
+            api_key = settings.get_openai_api_key()
+            ai = OpenAIProvider(api_key)
+        else:
+            ai = OllamaProvider()
+        
+        response = ai.generate_commit_message(prompt, model)
+        content = parse_ai_response(response)
+        
+        if task:
             progress.update(task, completed=True)
-            
-            return {
-                'title': title,
-                'body': body,
-                'labels': labels
-            }
-        except Exception as e:
+        
+        return content
+        
+    except Exception as e:
+        if task:
             progress.update(task, visible=False)
-            console.print(Panel(f"[red]Failed to generate PR content: {str(e)}[/red]", title="Error", border_style="red"))
-            sys.exit(1)
+        console.print(Panel(f"[red]Failed to generate PR content: {str(e)}[/red]", title="Error", border_style="red"))
+        sys.exit(1)
 
-def create_pr(base: str = None) -> None:
+def create_pr(base: str = None, show_details: bool = False) -> None:
     """Create a pull request with AI-generated content"""
     github = GitHubAPI()
     
@@ -173,9 +205,7 @@ def create_pr(base: str = None) -> None:
         console=console
     ) as progress:
         # Generate PR content
-        task_content = progress.add_task("Generating PR content...", total=None)
-        content = generate_pr_content()
-        progress.update(task_content, completed=True)
+        content = generate_pr_content(progress=progress)
         
         # Show preview
         console.print("\n[bold]Pull Request Preview[/bold]")
@@ -204,6 +234,22 @@ def create_pr(base: str = None) -> None:
             progress.update(task_create, completed=True)
             
             console.print(f"\n[bold green]✓[/bold green] Pull request created: [link={pr['html_url']}]{pr['html_url']}[/link]")
+            
+            # Show details if requested
+            if show_details:
+                task_insights = progress.add_task("Generating PR insights...", total=None)
+                try:
+                    insights = get_pr_insights(pr)
+                    progress.update(task_insights, completed=True)
+                    console.print(Panel(
+                        f"[bold cyan]AI Insights:[/bold cyan]\n{insights}",
+                        title="PR Analysis",
+                        border_style="cyan"
+                    ))
+                except Exception:
+                    progress.update(task_insights, visible=False)
+                    console.print("[yellow]Could not generate PR insights[/yellow]")
+            
         except Exception as e:
             progress.update(task_create, visible=False)
             console.print(Panel(f"[red]Failed to create PR: {str(e)}[/red]", title="Error", border_style="red"))

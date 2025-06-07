@@ -1064,14 +1064,14 @@ def branches_command(
 def pr_command(
     action: str = typer.Argument(..., help="Action to perform: create, list"),
     base: str = typer.Option(None, "--base", "-b", help="Base branch for PR (default: main)"),
-    details: bool = typer.Option(False, "--details", "-d", help="Show AI-generated insights for PRs"),
+    details: bool = typer.Option(False, "--details", "-d", help="Show AI-generated insights"),
 ):
     """Manage pull requests with AI assistance"""
     show_welcome_message()
     ensure_openai_configured()
     
     if action == "create":
-        create_pr(base=base)
+        create_pr(base=base, show_details=details)
     elif action == "list":
         list_prs(show_details=details)
     else:
