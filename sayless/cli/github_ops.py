@@ -18,13 +18,14 @@ settings = Config()
 
 class GitHubAPI:
     def __init__(self):
-        self.token = os.getenv("GITHUB_TOKEN")
+        self.token = settings.get_github_token()
         if not self.token:
             console.print(Panel(
                 "[red]GitHub token not found[/red]\n\n"
-                "[yellow]Please set your GitHub token:[/yellow]\n"
-                "1. Create a token at https://github.com/settings/tokens\n"
-                "2. Set it in your environment:\n"
+                "[yellow]Please set your GitHub token using one of these methods:[/yellow]\n"
+                "1. Configure via command:\n"
+                "   [blue]sl config --github-token YOUR_TOKEN[/blue]\n"
+                "2. Set environment variable:\n"
                 "   [blue]export GITHUB_TOKEN=your_token[/blue]",
                 title="Configuration Required",
                 border_style="red"

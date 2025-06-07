@@ -7,56 +7,35 @@ console = Console()
 
 class Config:
     def __init__(self):
-        self.config_dir = Path.home() / '.sayless'
-        self.config_file = self.config_dir / 'config.json'
-        self.config = self.load_config()
-
-    def load_config(self):
-        """Load configuration from file or create default"""
-        if not self.config_dir.exists():
-            self.config_dir.mkdir(parents=True)
+        """Initialize configuration"""
+        self.config_dir = os.path.expanduser("~/.sayless")
+        self.config_file = os.path.join(self.config_dir, "config.json")
         
-        if not self.config_file.exists():
-            default_config = {
-                'provider': 'openai',  # 'openai' or 'ollama'
-                'openai_api_key': None,
-                'model': 'gpt-4o'  # default model for OpenAI
-            }
-            self.save_config(default_config)
-            return default_config
+        # Create config directory if it doesn't exist
+        if not os.path.exists(self.config_dir):
+            os.makedirs(self.config_dir)
         
-        try:
+        # Load or create config file
+        if os.path.exists(self.config_file):
             with open(self.config_file, 'r') as f:
-                return json.load(f)
-        except json.JSONDecodeError:
-            console.print("[red]Error: Invalid config file. Resetting to defaults.[/red]")
-            return self.reset_config()
+                self.config = json.load(f)
+        else:
+            self.config = {
+                'provider': 'openai',
+                'model': 'gpt-4o',
+                'openai_api_key': None,
+                'github_token': None
+            }
+            self.save_config(self.config)
 
     def save_config(self, config):
         """Save configuration to file"""
         with open(self.config_file, 'w') as f:
-            json.dump(config, f, indent=2)
-        self.config = config
-
-    def reset_config(self):
-        """Reset configuration to defaults"""
-        default_config = {
-            'provider': 'openai',
-            'openai_api_key': None,
-            'model': 'gpt-4o'
-        }
-        self.save_config(default_config)
-        return default_config
+            json.dump(config, f, indent=4)
 
     def get_openai_api_key(self):
         """Get OpenAI API key from config or environment"""
-        # First check environment variable
-        api_key = os.getenv('OPENAI_API_KEY')
-        if api_key:
-            return api_key
-        
-        # Then check config file
-        return self.config.get('openai_api_key')
+        return os.getenv('OPENAI_API_KEY') or self.config.get('openai_api_key')
 
     def set_openai_api_key(self, api_key):
         """Set OpenAI API key in config and environment"""
@@ -64,6 +43,17 @@ class Config:
         self.save_config(self.config)
         # Also set it for the current session
         os.environ['OPENAI_API_KEY'] = api_key
+
+    def get_github_token(self):
+        """Get GitHub token from config or environment"""
+        return os.getenv('GITHUB_TOKEN') or self.config.get('github_token')
+
+    def set_github_token(self, token):
+        """Set GitHub token in config and environment"""
+        self.config['github_token'] = token
+        self.save_config(self.config)
+        # Also set it for the current session
+        os.environ['GITHUB_TOKEN'] = token
 
     def set_provider(self, provider):
         """Set the AI provider (openai or ollama)"""
