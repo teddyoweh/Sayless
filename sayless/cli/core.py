@@ -20,7 +20,7 @@ from dateutil.parser import parse as parse_date
 from dateutil.relativedelta import relativedelta
 import asyncio
 from .embeddings import CommitEmbeddings
-from .git_ops import create_branch, list_branches
+from .git_ops import create_branch, list_branches, run_git_command
 from .github_ops import create_pr, list_prs
 
 app = typer.Typer(help="🤖 AI-powered Git commit message generator")
