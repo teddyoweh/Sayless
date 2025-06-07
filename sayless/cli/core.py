@@ -20,6 +20,8 @@ from dateutil.parser import parse as parse_date
 from dateutil.relativedelta import relativedelta
 import asyncio
 from .embeddings import CommitEmbeddings
+from .git_ops import create_branch, list_branches
+from .github_ops import create_pr, list_prs
 
 app = typer.Typer(help="🤖 AI-powered Git commit message generator")
 console = Console()
@@ -473,8 +475,21 @@ def config(
 @app.command()
 def generate(
     preview: bool = typer.Option(False, help="Preview the commit message without creating the commit"),
+    auto_add: bool = typer.Option(False, "-a", help="Automatically run 'git add .' before generating commit"),
 ):
     """Generate a commit message for staged changes and create the commit"""
+    _generate_command(preview, auto_add)
+
+@app.command("g")
+def generate_alias(
+    preview: bool = typer.Option(False, help="Preview the commit message without creating the commit"),
+    auto_add: bool = typer.Option(False, "-a", help="Automatically run 'git add .' before generating commit"),
+):
+    """Generate a commit message for staged changes and create the commit (alias for generate)"""
+    _generate_command(preview, auto_add)
+
+def _generate_command(preview: bool, auto_add: bool):
+    """Internal function that implements the generate command logic"""
     show_welcome_message()
     ensure_openai_configured()
     
@@ -503,6 +518,18 @@ def generate(
             console.print(panel)
             sys.exit(1)
         progress.update(task_check, completed=True)
+        
+        # Auto-add changes if requested
+        if auto_add:
+            task_add = progress.add_task("Adding all changes...", total=None)
+            try:
+                subprocess.run(['git', 'add', '.'], check=True, capture_output=True)
+                progress.update(task_add, completed=True)
+                console.print("[green]✓[/green] Added all changes")
+            except subprocess.CalledProcessError as e:
+                progress.update(task_add, visible=False)
+                console.print(Panel(f"[red]Failed to add changes: {e.stderr.decode('utf-8')}[/red]", title="Error", border_style="red"))
+                sys.exit(1)
         
         # Get staged changes
         task_diff = progress.add_task("Getting staged changes...", total=None)
@@ -1013,6 +1040,46 @@ def search(
                 title="⚠️ Error",
                 border_style="red"
             ))
+
+@app.command("branch")
+def branch_command(
+    description: str = typer.Argument(None, help="Description of the branch/feature"),
+    no_checkout: bool = typer.Option(False, "--no-checkout", help="Create branch without switching to it"),
+    generate: bool = typer.Option(False, "--generate", "-g", help="Generate branch name from staged changes"),
+    auto_add: bool = typer.Option(False, "-a", help="Automatically run 'git add .' before operation"),
+):
+    """Create a new branch with an AI-generated name"""
+    show_welcome_message()
+    ensure_openai_configured()
+    create_branch(description=description, checkout=not no_checkout, generate=generate, auto_add=auto_add)
+
+@app.command("branches")
+def branches_command(
+    details: bool = typer.Option(False, "--details", "-d", help="Show AI-generated summary of changes"),
+):
+    """List branches with optional AI-generated summaries"""
+    show_welcome_message()
+    ensure_openai_configured()
+    list_branches(show_details=details)
+
+@app.command("pr")
+def pr_command(
+    action: str = typer.Argument(..., help="Action to perform: create, list"),
+    base: str = typer.Option(None, "--base", "-b", help="Base branch for PR (default: main)"),
+    details: bool = typer.Option(False, "--details", "-d", help="Show AI-generated insights"),
+):
+    """Manage pull requests with AI assistance"""
+    show_welcome_message()
+    ensure_openai_configured()
+    
+    if action == "create":
+        create_pr(base=base, show_details=details)
+    elif action == "list":
+        list_prs(show_details=details)
+    else:
+        console.print(f"[red]Unknown action: {action}[/red]")
+        console.print("Valid actions: create, list")
+        sys.exit(1)
 
 if __name__ == "__main__":
     app()
