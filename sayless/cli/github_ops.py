@@ -282,8 +282,8 @@ def generate_pr_content(branch: str = None, progress: Progress = None) -> Dict[s
         provider = settings.get_provider()
         model = settings.get_model()
         
-        prompt = f"""Based on these changes, generate a pull request title and description.
-The changes are:
+        # First, generate a high-level understanding of the changes
+        analysis_prompt = f"""Analyze these changes and provide a high-level understanding:
 
 Commits:
 {commits}
@@ -291,70 +291,128 @@ Commits:
 Changes:
 {diff}
 
-Generate a clear, descriptive PR that explains the changes, their purpose, and how to test them.
-Focus on making the description helpful for reviewers.
+Respond in this format:
+1. Main purpose (one line):
+2. Type of changes (feat/fix/refactor/etc):
+3. Scope of changes:
+4. Breaking changes (yes/no):
+5. Key files/components affected:"""
 
-DO NOT include any XML-like tags in your response.
-Instead, format your response exactly like this:
+        try:
+            if provider == 'openai':
+                api_key = settings.get_openai_api_key()
+                ai = OpenAIProvider(api_key)
+            else:
+                ai = OllamaProvider()
+            
+            analysis = ai.generate_commit_message(analysis_prompt, model)
+            
+            # Now use this analysis to generate the PR content
+            pr_prompt = f"""Based on this analysis of the changes, generate a pull request:
 
-Title: Brief, descriptive title (use conventional commit format)
+Analysis:
+{analysis}
+
+Commits:
+{commits}
+
+Changes:
+{diff}
+
+Requirements:
+1. Title must be clear and follow conventional commit format
+2. Description must be detailed but concise
+3. Include specific testing instructions
+4. Highlight any breaking changes or dependencies
+5. Focus on what reviewers need to know
+
+Format the response EXACTLY like this:
+
+Title: type(scope): concise description
+
+## Overview
+(2-3 sentences about the main changes and their purpose)
 
 ## Changes
-- Key changes and their purpose (bullet points)
-- Impact of these changes
-- Any breaking changes or dependencies
+- (bullet points of specific changes)
+- (focus on what and why, not how)
 
 ## Testing
-- How to test these changes
-- Expected outcomes
-- Any specific test cases
+- (specific steps to test the changes)
+- (expected outcomes)
+- (any test data or setup needed)
 
-## Additional Notes
-- Important considerations
-- Related issues or PRs
-- Any follow-up tasks needed
+## Notes
+- Breaking Changes: (if any)
+- Dependencies: (if any)
+- Migration: (if needed)
 
-Labels: comma-separated list from [feature, bug, documentation, enhancement, refactor, performance, testing, maintenance]"""
-        
-        if provider == 'openai':
-            api_key = settings.get_openai_api_key()
-            ai = OpenAIProvider(api_key)
-        else:
-            ai = OllamaProvider()
-        
-        response = ai.generate_commit_message(prompt, model)
-        
-        # Parse response
-        try:
-            # Extract title (first non-empty line)
-            lines = [l for l in response.split('\n') if l.strip()]
-            title = lines[0].replace('Title:', '').strip()
+Labels: feature, bug, documentation, enhancement, refactor, performance, testing, maintenance (comma-separated, choose relevant ones only)"""
+
+            response = ai.generate_commit_message(pr_prompt, model)
             
-            # Extract body (everything after title)
-            body = '\n'.join(lines[1:]).strip()
+            # Parse response with improved error handling
+            try:
+                # Extract title (first non-empty line)
+                lines = [l for l in response.split('\n') if l.strip()]
+                title = lines[0].replace('Title:', '').strip()
+                
+                # Validate title format
+                if not any(title.startswith(t) for t in ['feat', 'fix', 'docs', 'style', 'refactor', 'perf', 'test', 'chore']):
+                    # Try to infer type from analysis
+                    if 'Type of changes:' in analysis:
+                        change_type = analysis.split('Type of changes:')[1].split('\n')[0].strip().lower()
+                        if not title.startswith(f"{change_type}("):
+                            title = f"{change_type}: {title}"
+                
+                # Extract body (everything between title and labels)
+                body_lines = []
+                in_body = False
+                for line in lines[1:]:
+                    if line.lower().startswith('labels:'):
+                        break
+                    if line.startswith('##') or in_body:
+                        in_body = True
+                        body_lines.append(line)
+                
+                body = '\n'.join(body_lines).strip()
+                if not body:
+                    # Fallback to structured sections if body extraction fails
+                    body = "## Overview\n"
+                    body += analysis.split('Main purpose')[1].split('\n')[0].strip() + "\n\n"
+                    body += "## Changes\n"
+                    body += "- " + "\n- ".join(commits.split('\n')[:5]) + "\n\n"
+                    body += "## Testing\n- Please verify the changes work as expected\n\n"
+                    if 'Breaking changes: yes' in analysis.lower():
+                        body += "## Notes\n- Breaking Changes: Yes, please review carefully\n"
+                
+                # Extract labels
+                labels = []
+                for line in reversed(lines):
+                    if line.lower().startswith('labels:'):
+                        labels_text = line.split(':', 1)[1].strip()
+                        labels = [l.strip() for l in labels_text.split(',') if l.strip()]
+                        break
+                
+                # If no labels found or invalid, infer from content
+                if not labels:
+                    labels = infer_labels_from_content(title, body)
+                
+                if task:
+                    progress.update(task, completed=True)
+                
+                return {
+                    'title': title,
+                    'body': body,
+                    'labels': labels
+                }
+            except Exception as e:
+                raise ValueError(f"Failed to parse AI response: {str(e)}\nResponse:\n{response}")
             
-            # Extract labels (last line if it starts with "Labels:")
-            labels = []
-            if lines[-1].lower().startswith('labels:'):
-                labels_text = lines[-1].split(':', 1)[1].strip()
-                labels = [l.strip() for l in labels_text.split(',') if l.strip()]
-                # Remove labels line from body
-                body = '\n'.join(lines[1:-1]).strip()
-            
-            # If no labels found or invalid, infer from content
-            if not labels:
-                labels = infer_labels_from_content(title, body)
-            
-            if task:
-                progress.update(task, completed=True)
-            
-            return {
-                'title': title,
-                'body': body,
-                'labels': labels
-            }
         except Exception as e:
-            raise ValueError(f"Failed to parse AI response: {str(e)}\nResponse:\n{response}")
+            if task:
+                progress.update(task, visible=False)
+            raise ValueError(f"Failed to generate PR content: {str(e)}")
             
     except Exception as e:
         if task:
@@ -582,33 +640,37 @@ def get_pr_insights(pr: Dict) -> str:
             base = pr.get('base', {}).get('sha')
             if head and base:
                 diff = run_git_command(['diff', '--stat', base, head]).stdout
+                patch = run_git_command(['diff', '--unified=1', base, head]).stdout
             else:
                 diff = "Diff not available"
+                patch = ""
             
         except Exception as e:
             console.print(f"[yellow]Warning: Could not get complete PR details: {str(e)}[/yellow]")
             diff = "Diff not available"
+            patch = ""
         
-        prompt = f"""Analyze this pull request and provide a concise but informative insight:
+        # First, get a technical analysis
+        tech_prompt = f"""Analyze these pull request changes from a technical perspective:
 
 Title: {pr.get('title', 'No title')}
 Description: {pr.get('body', 'No description')}
-Files Changed: {files_changed}
-Additions: {additions}
-Deletions: {deletions}
+Files: {files_changed} files changed, +{additions} -{deletions}
 Labels: {', '.join(labels)}
 
-Changes:
+Changes Overview:
 {diff}
 
-Provide a one-line analysis that covers:
-1. The main purpose of the changes
-2. Complexity level (low/medium/high)
-3. Potential impact
-4. Any notable concerns
+Detailed Changes:
+{patch[:1000] if patch else 'Not available'}
 
-Keep it concise but informative."""
-        
+Provide a brief technical analysis in this format:
+1. Complexity (low/medium/high):
+2. Risk Level (low/medium/high):
+3. Test Coverage (good/partial/minimal):
+4. Code Quality Impact (positive/neutral/negative):
+5. Key Technical Concerns:"""
+
         try:
             if provider == 'openai':
                 api_key = settings.get_openai_api_key()
@@ -616,19 +678,56 @@ Keep it concise but informative."""
             else:
                 ai = OllamaProvider()
             
-            insight = ai.generate_commit_message(prompt, model).strip()
+            tech_analysis = ai.generate_commit_message(tech_prompt, model).strip()
             
-            # Validate the insight
+            # Now generate the final insight
+            insight_prompt = f"""Based on this technical analysis, provide a concise but informative PR insight:
+
+Analysis:
+{tech_analysis}
+
+PR Details:
+- Title: {pr.get('title', 'No title')}
+- Files Changed: {files_changed}
+- Changes: +{additions} -{deletions}
+- Labels: {', '.join(labels)}
+
+Provide a one-line summary that covers:
+1. The main purpose
+2. Technical complexity and risk
+3. Key recommendations for reviewers
+
+Keep it concise but informative. Focus on what reviewers need to know."""
+            
+            insight = ai.generate_commit_message(insight_prompt, model).strip()
+            
+            # Validate and clean up the insight
             if not insight or insight.lower().startswith(('error', 'i apologize', 'i\'m sorry')):
-                return "Simple change with low complexity. Review recommended for validation."
+                # Generate a basic insight from the technical analysis
+                complexity = "unknown"
+                risk = "unknown"
+                if "Complexity:" in tech_analysis:
+                    complexity = tech_analysis.split("Complexity:")[1].split("\n")[0].strip().lower()
+                if "Risk Level:" in tech_analysis:
+                    risk = tech_analysis.split("Risk Level:")[1].split("\n")[0].strip().lower()
                 
+                return f"{pr.get('title', 'Changes')} - {complexity} complexity, {risk} risk. Review recommended."
+            
+            # Clean up the insight
+            insight = insight.replace('Summary:', '').replace('Insight:', '').strip()
+            if insight.startswith('"') and insight.endswith('"'):
+                insight = insight[1:-1]
+            
             return insight
             
         except Exception as e:
             console.print(f"[yellow]Warning: AI generation failed: {str(e)}[/yellow]")
             # Provide a basic insight based on available data
-            complexity = "high" if files_changed > 10 or (additions + deletions) > 500 else "medium" if files_changed > 5 or (additions + deletions) > 200 else "low"
-            return f"Changes affecting {files_changed} files with {complexity} complexity. Manual review recommended."
+            complexity = "high" if files_changed > 10 or (additions + deletions) > 500 else \
+                        "medium" if files_changed > 5 or (additions + deletions) > 200 else "low"
+            risk = "high" if complexity == "high" or "break" in pr.get('title', '').lower() + pr.get('body', '').lower() else \
+                   "medium" if complexity == "medium" else "low"
+            return f"Changes affecting {files_changed} files with {complexity} complexity and {risk} risk level. Review carefully."
             
     except Exception as e:
         console.print(f"[yellow]Warning: Failed to generate insights: {str(e)}[/yellow]")
