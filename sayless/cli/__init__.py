@@ -1,5 +1,5 @@
 """
-Sayless - AI-powered Git commit message generator and repository analysis tool
+Sayless - AI Git Copilot / Autopilot
 """
 
 __version__ = "0.1.0"

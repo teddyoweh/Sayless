@@ -8,7 +8,7 @@ setup(
     version="0.1.0",
     author="Teddy",
     author_email="",  # Add your email
-    description="AI-powered Git commit message generator and repository analysis tool",
+    description="AI Git Copilot / Autopilot",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/teddy/sayless",  # Update with your repo URL

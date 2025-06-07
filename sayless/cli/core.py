@@ -23,7 +23,7 @@ from .embeddings import CommitEmbeddings
 from .git_ops import create_branch, list_branches
 from .github_ops import create_pr, list_prs
 
-app = typer.Typer(help="🤖 AI-powered Git commit message generator")
+app = typer.Typer(help="AI Git Copilot / Autopilot")
 console = Console()
 settings = Config()
 
@@ -35,7 +35,7 @@ def show_welcome_message():
     model = settings.get_model()
     
     table = Table(show_header=False, box=None)
-    table.add_row("[bold cyan]Sayless[/bold cyan] 🤖", "AI Commit Message Generator")
+    table.add_row("[bold cyan]Sayless[/bold cyan] ", "AI Git Copilot / Autopilot")
     table.add_row("Provider", f"[green]{provider}[/green] {'(default)' if provider == 'openai' else '(local AI)'}")
     table.add_row("Model", f"[green]{model}[/green]")
     
