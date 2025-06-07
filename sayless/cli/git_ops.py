@@ -15,10 +15,53 @@ settings = Config()
 def run_git_command(command: List[str], check=True, capture_output=True) -> subprocess.CompletedProcess:
     """Run a git command and handle errors"""
     try:
-        return subprocess.run(['git'] + command, check=check, capture_output=capture_output, text=True)
+        result = subprocess.run(['git'] + command, check=check, capture_output=capture_output, text=True)
+        if check and result.returncode != 0:
+            error_msg = result.stderr.strip()
+            
+            # Handle specific git errors with better messages
+            if "Needed a single revision" in error_msg or "unknown revision" in error_msg:
+                # Get recent commits for context
+                try:
+                    recent = subprocess.run(
+                        ['git', 'log', '--oneline', '-n', '5'],
+                        capture_output=True,
+                        text=True
+                    )
+                    if recent.returncode == 0:
+                        commits = recent.stdout.strip()
+                        raise subprocess.CalledProcessError(
+                            result.returncode,
+                            result.args,
+                            output=result.stdout,
+                            stderr=f"Invalid commit reference. Please provide a valid commit hash.\n\nRecent commits:\n{commits}"
+                        )
+                except:
+                    pass
+            
+            # If no specific handling, raise original error
+            raise subprocess.CalledProcessError(
+                result.returncode,
+                result.args,
+                output=result.stdout,
+                stderr=error_msg
+            )
+        return result
     except subprocess.CalledProcessError as e:
+        if not check:
+            return e
+        error_msg = e.stderr.strip() if e.stderr else str(e)
         console.print(Panel(
-            f"[red]Git command failed: {' '.join(['git'] + command)}\nError: {e.stderr}[/red]",
+            f"[red]Git command failed: {' '.join(['git'] + command)}\nError: {error_msg}[/red]",
+            title="Error",
+            border_style="red"
+        ))
+        sys.exit(1)
+    except Exception as e:
+        if not check:
+            raise
+        console.print(Panel(
+            f"[red]Failed to run git command: {' '.join(['git'] + command)}\nError: {str(e)}[/red]",
             title="Error",
             border_style="red"
         ))

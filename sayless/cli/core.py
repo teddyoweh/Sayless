@@ -23,7 +23,7 @@ from .embeddings import CommitEmbeddings
 from .git_ops import create_branch, list_branches, run_git_command
 from .github_ops import create_pr, list_prs
 
-app = typer.Typer(help="🤖 AI-powered Git commit message generator")
+app = typer.Typer(help="AI Git Copilot / Autopilot")
 console = Console()
 settings = Config()
 
