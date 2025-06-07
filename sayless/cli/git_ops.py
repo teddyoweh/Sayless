@@ -31,16 +31,75 @@ def get_current_branch() -> str:
 
 def sanitize_branch_name(name: str) -> str:
     """Convert a string into a valid git branch name"""
-    # Convert to lowercase
-    name = name.lower()
-    # Replace spaces and special characters with hyphens
+    # Remove any error messages or common AI responses
+    error_starts = ['i apologize', 'i\'m sorry', 'error:', 'sorry,', 'it seems', 'please provide']
+    name_lower = name.lower()
+    if any(name_lower.startswith(start) for start in error_starts):
+        # Try to extract meaningful content after these phrases
+        for start in error_starts:
+            if name_lower.startswith(start):
+                name = name[len(start):].strip('., ')
+                break
+    
+    # Remove common filler words
+    filler_words = ['the', 'a', 'an', 'and', 'or', 'but', 'for', 'nor', 'on', 'at', 'to', 'for', 'in', 'of']
+    words = name.lower().split()
+    words = [w for w in words if w not in filler_words]
+    name = '-'.join(words)
+    
+    # Convert to lowercase and replace special characters
     name = re.sub(r'[^a-z0-9]+', '-', name)
+    
     # Remove leading and trailing hyphens
     name = name.strip('-')
+    
+    # Limit length while keeping meaningful parts
+    if len(name) > 50:
+        words = name.split('-')
+        shortened_words = []
+        length = 0
+        for word in words:
+            # Keep first and last word regardless of length
+            if not shortened_words or len(words) == len(shortened_words) + 1:
+                shortened_words.append(word)
+                length += len(word) + 1  # +1 for hyphen
+            # For middle words, keep if they're important or short
+            elif len(word) <= 8 or word in ['fix', 'feat', 'add', 'update', 'remove', 'improve']:
+                if length + len(word) + 1 <= 50:
+                    shortened_words.append(word)
+                    length += len(word) + 1
+        name = '-'.join(shortened_words)
+    
+    # Final cleanup
+    name = re.sub(r'-+', '-', name)  # Replace multiple hyphens with single hyphen
+    name = name.strip('-')
+    
+    # If name is empty after all processing, use a fallback
+    if not name:
+        name = "feature-update"
+    
     return name
 
 def get_branch_type(description: str) -> str:
     """Use AI to determine the branch type based on description"""
+    # First try to infer type from the description itself
+    description_lower = description.lower()
+    type_indicators = {
+        'fix': ['fix', 'bug', 'issue', 'error', 'problem', 'crash'],
+        'feat': ['add', 'new', 'feature', 'implement', 'create'],
+        'docs': ['document', 'readme', 'guide', 'docs'],
+        'style': ['style', 'format', 'lint', 'prettier'],
+        'refactor': ['refactor', 'restructure', 'reorganize', 'cleanup'],
+        'perf': ['performance', 'optimize', 'speed', 'fast'],
+        'test': ['test', 'spec', 'coverage'],
+        'chore': ['chore', 'maintain', 'update', 'upgrade', 'bump']
+    }
+    
+    for branch_type, keywords in type_indicators.items():
+        if any(keyword in description_lower for keyword in keywords):
+            return branch_type
+    
+    # If no clear indication from description, use AI
     provider = settings.get_provider()
     model = settings.get_model()
     
@@ -72,9 +131,34 @@ Respond with ONLY the type (e.g., 'feat' or 'fix')."""
 def get_staged_changes_description() -> str:
     """Get a description of staged changes using AI"""
     try:
-        # Get staged diff
+        # First check for staged changes
         diff = run_git_command(['diff', '--cached', '--no-color']).stdout
+        
+        # If no staged changes, try to use the latest commit
         if not diff.strip():
+            try:
+                # Get the latest commit message and diff
+                latest_commit = run_git_command(['log', '-1', '--format=%B']).stdout.strip()
+                commit_diff = run_git_command(['log', '-1', '-p', '--no-color']).stdout.strip()
+                
+                if latest_commit:
+                    # Extract the commit type if it follows conventional commit format
+                    commit_type = 'feat'  # default
+                    if '(' in latest_commit and '):' in latest_commit:
+                        type_part = latest_commit.split('(')[0].strip().lower()
+                        if type_part in ['feat', 'fix', 'docs', 'style', 'refactor', 'perf', 'test', 'chore']:
+                            commit_type = type_part
+                    
+                    # Use the commit message as the branch name
+                    description = latest_commit.split('\n')[0]  # First line only
+                    # Remove conventional commit format if present
+                    if '(' in description and '):' in description:
+                        description = description.split('):')[1].strip()
+                    return description
+                
+            except Exception:
+                pass
+            
             raise ValueError("No staged changes found. Stage your changes first with 'git add'")
 
         provider = settings.get_provider()
@@ -126,8 +210,8 @@ def create_branch(description: str = None, checkout: bool = True, generate: bool
                 auto_add_changes(progress)
             
             if generate:
-                # Generate description from staged changes
-                task_desc = progress.add_task("Analyzing staged changes...", total=None)
+                # Generate description from staged changes or latest commit
+                task_desc = progress.add_task("Analyzing changes...", total=None)
                 description = get_staged_changes_description()
                 progress.update(task_desc, completed=True)
             elif not description:
