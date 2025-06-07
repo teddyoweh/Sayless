@@ -118,12 +118,16 @@ sayless switch ollama --model llama2
 
 ### Branch Management
 ```bash
-# Create a new branch with AI-generated name
+# Create a new branch with AI-generated name from description
 sayless branch "Add user authentication system"
 # Creates and switches to branch like: feat/add-user-authentication-system
 
 # Create branch without switching to it
 sayless branch "Add logging system" --no-checkout
+
+# Auto-generate branch name from staged changes
+git add .  # Stage your changes first
+sayless branch -g  # AI analyzes changes and creates appropriate branch
 
 # List branches
 sayless branches

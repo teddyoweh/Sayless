@@ -69,26 +69,63 @@ Respond with ONLY the type (e.g., 'feat' or 'fix')."""
     except:
         return 'feat'  # Default to feat if AI fails
 
-def create_branch(description: str, checkout: bool = True) -> str:
-    """Create a new branch with an AI-generated name based on description"""
+def get_staged_changes_description() -> str:
+    """Get a description of staged changes using AI"""
+    try:
+        # Get staged diff
+        diff = run_git_command(['diff', '--cached', '--no-color']).stdout
+        if not diff.strip():
+            raise ValueError("No staged changes found. Stage your changes first with 'git add'")
+
+        provider = settings.get_provider()
+        model = settings.get_model()
+        
+        prompt = """Based on these staged changes, provide a brief, descriptive title for a branch name.
+Keep it concise and focused on the main purpose of the changes.
+Respond with ONLY the title, no additional text or formatting.
+
+Changes:
+{diff}"""
+        
+        if provider == 'openai':
+            api_key = settings.get_openai_api_key()
+            ai = OpenAIProvider(api_key)
+        else:
+            ai = OllamaProvider()
+        
+        description = ai.generate_commit_message(prompt, model).strip()
+        return description
+    except Exception as e:
+        raise ValueError(f"Failed to generate branch name: {str(e)}")
+
+def create_branch(description: str = None, checkout: bool = True, generate: bool = False) -> str:
+    """Create a new branch with an AI-generated name based on description or staged changes"""
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
         console=console
     ) as progress:
-        # Determine branch type
-        task_type = progress.add_task("Determining branch type...", total=None)
-        branch_type = get_branch_type(description)
-        progress.update(task_type, completed=True)
-        
-        # Generate branch name
-        task_name = progress.add_task("Generating branch name...", total=None)
-        branch_name = f"{branch_type}/{sanitize_branch_name(description)}"
-        progress.update(task_name, completed=True)
-        
-        # Create and checkout branch
-        task_create = progress.add_task(f"Creating branch {branch_name}...", total=None)
         try:
+            if generate:
+                # Generate description from staged changes
+                task_desc = progress.add_task("Analyzing staged changes...", total=None)
+                description = get_staged_changes_description()
+                progress.update(task_desc, completed=True)
+            elif not description:
+                raise ValueError("Either provide a description or use --generate (-g)")
+            
+            # Determine branch type
+            task_type = progress.add_task("Determining branch type...", total=None)
+            branch_type = get_branch_type(description)
+            progress.update(task_type, completed=True)
+            
+            # Generate branch name
+            task_name = progress.add_task("Generating branch name...", total=None)
+            branch_name = f"{branch_type}/{sanitize_branch_name(description)}"
+            progress.update(task_name, completed=True)
+            
+            # Create and checkout branch
+            task_create = progress.add_task(f"Creating branch {branch_name}...", total=None)
             if checkout:
                 run_git_command(['checkout', '-b', branch_name])
             else:
@@ -101,8 +138,17 @@ def create_branch(description: str, checkout: bool = True) -> str:
             
             return branch_name
         except Exception as e:
-            progress.update(task_create, visible=False)
-            console.print(Panel(f"[red]Failed to create branch: {str(e)}[/red]", title="Error", border_style="red"))
+            console.print(Panel(
+                f"[red]{str(e)}[/red]\n\n"
+                "[yellow]To create a branch, either:[/yellow]\n"
+                "1. Provide a description:\n"
+                "   [blue]sl branch \"add user authentication\"[/blue]\n"
+                "2. Stage changes and use auto-generate:\n"
+                "   [blue]git add .[/blue]\n"
+                "   [blue]sl branch -g[/blue]",
+                title="Error",
+                border_style="red"
+            ))
             sys.exit(1)
 
 def list_branches(show_details: bool = False) -> List[Dict[str, str]]:
