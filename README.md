@@ -129,6 +129,9 @@ sayless branch "Add logging system" --no-checkout
 git add .  # Stage your changes first
 sayless branch -g  # AI analyzes changes and creates appropriate branch
 
+# Auto-stage and generate branch name in one command
+sayless branch -g -a  # Runs git add . and generates branch name
+
 # List branches
 sayless branches
 

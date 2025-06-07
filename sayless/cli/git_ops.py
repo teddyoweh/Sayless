@@ -98,7 +98,22 @@ Changes:
     except Exception as e:
         raise ValueError(f"Failed to generate branch name: {str(e)}")
 
-def create_branch(description: str = None, checkout: bool = True, generate: bool = False) -> str:
+def auto_add_changes(progress: Progress = None) -> None:
+    """Stage all changes with git add ."""
+    task = None
+    if progress:
+        task = progress.add_task("Staging all changes...", total=None)
+    try:
+        run_git_command(['add', '.'])
+        if task:
+            progress.update(task, completed=True)
+            console.print("[green]✓[/green] Staged all changes")
+    except Exception as e:
+        if task:
+            progress.update(task, visible=False)
+        raise ValueError(f"Failed to stage changes: {str(e)}")
+
+def create_branch(description: str = None, checkout: bool = True, generate: bool = False, auto_add: bool = False) -> str:
     """Create a new branch with an AI-generated name based on description or staged changes"""
     with Progress(
         SpinnerColumn(),
@@ -106,6 +121,10 @@ def create_branch(description: str = None, checkout: bool = True, generate: bool
         console=console
     ) as progress:
         try:
+            # Auto-add changes if requested
+            if auto_add:
+                auto_add_changes(progress)
+            
             if generate:
                 # Generate description from staged changes
                 task_desc = progress.add_task("Analyzing staged changes...", total=None)
@@ -144,8 +163,7 @@ def create_branch(description: str = None, checkout: bool = True, generate: bool
                 "1. Provide a description:\n"
                 "   [blue]sl branch \"add user authentication\"[/blue]\n"
                 "2. Stage changes and use auto-generate:\n"
-                "   [blue]git add .[/blue]\n"
-                "   [blue]sl branch -g[/blue]",
+                "   [blue]sl branch -g -a[/blue] (auto-stages and generates name)",
                 title="Error",
                 border_style="red"
             ))

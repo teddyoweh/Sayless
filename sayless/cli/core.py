@@ -1046,11 +1046,12 @@ def branch_command(
     description: str = typer.Argument(None, help="Description of the branch/feature"),
     no_checkout: bool = typer.Option(False, "--no-checkout", help="Create branch without switching to it"),
     generate: bool = typer.Option(False, "--generate", "-g", help="Generate branch name from staged changes"),
+    auto_add: bool = typer.Option(False, "-a", help="Automatically run 'git add .' before operation"),
 ):
     """Create a new branch with an AI-generated name"""
     show_welcome_message()
     ensure_openai_configured()
-    create_branch(description=description, checkout=not no_checkout, generate=generate)
+    create_branch(description=description, checkout=not no_checkout, generate=generate, auto_add=auto_add)
 
 @app.command("branches")
 def branches_command(

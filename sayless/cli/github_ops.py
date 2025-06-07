@@ -84,35 +84,96 @@ class GitHubAPI:
         
         return response.json()
 
+def infer_labels_from_content(title: str, body: str) -> List[str]:
+    """Infer appropriate labels from PR title and body"""
+    labels = set()
+    
+    # Common keywords mapping
+    keyword_to_label = {
+        'feat': 'feature',
+        'fix': 'bug',
+        'doc': 'documentation',
+        'style': 'enhancement',
+        'refactor': 'refactor',
+        'perf': 'performance',
+        'test': 'testing',
+        'chore': 'maintenance',
+        'add': 'feature',
+        'improve': 'enhancement',
+        'update': 'enhancement',
+        'optimize': 'performance',
+        'bugfix': 'bug',
+        'error': 'bug',
+        'issue': 'bug',
+        'document': 'documentation',
+        'readme': 'documentation',
+    }
+    
+    # Check conventional commit format in title
+    if '(' in title and '):' in title:
+        commit_type = title.split('(')[0].lower()
+        if commit_type in keyword_to_label:
+            labels.add(keyword_to_label[commit_type])
+    
+    # Check keywords in title and body
+    content = (title + ' ' + body).lower()
+    for keyword, label in keyword_to_label.items():
+        if keyword in content:
+            labels.add(label)
+    
+    # Always return at least one label
+    if not labels:
+        labels.add('enhancement')
+    
+    return list(labels)
+
 def parse_ai_response(response: str) -> Dict[str, str]:
     """Parse AI response with robust error handling"""
     try:
         # Extract title
         title_parts = response.split('<title>')
         if len(title_parts) < 2:
-            raise ValueError("Could not find title section")
-        title = title_parts[1].split('</title>')[0].strip()
+            # Try to get first line as title
+            lines = response.strip().split('\n')
+            title = lines[0].strip()
+            if not title:
+                raise ValueError("Could not find title section")
+        else:
+            title = title_parts[1].split('</title>')[0].strip()
         
         # Extract body
         body_parts = response.split('<body>')
         if len(body_parts) < 2:
-            raise ValueError("Could not find body section")
-        body = body_parts[1].split('</body>')[0].strip()
+            # Try to extract markdown sections as body
+            body_lines = []
+            in_section = False
+            for line in response.split('\n'):
+                if line.startswith('##'):
+                    in_section = True
+                if in_section:
+                    body_lines.append(line)
+            body = '\n'.join(body_lines).strip()
+            if not body:
+                body = "## Changes\n" + response.strip()  # Use full response as changes
+        else:
+            body = body_parts[1].split('</body>')[0].strip()
         
-        # Extract labels
+        # Extract or infer labels
+        labels = []
         labels_parts = response.split('<labels>')
-        if len(labels_parts) < 2:
-            raise ValueError("Could not find labels section")
-        labels_text = labels_parts[1].split('</labels>')[0].strip()
-        labels = [l.strip() for l in labels_text.split(',') if l.strip()]
+        if len(labels_parts) >= 2:
+            labels_text = labels_parts[1].split('</labels>')[0].strip()
+            labels = [l.strip() for l in labels_text.split(',') if l.strip()]
+        
+        # If no labels found or invalid, infer from content
+        if not labels:
+            labels = infer_labels_from_content(title, body)
         
         # Validate parsed content
         if not title:
             raise ValueError("Empty title")
         if not body:
             raise ValueError("Empty body")
-        if not labels:
-            labels = ["enhancement"]  # Default label if none provided
         
         return {
             'title': title,
@@ -120,7 +181,7 @@ def parse_ai_response(response: str) -> Dict[str, str]:
             'labels': labels
         }
     except Exception as e:
-        raise ValueError(f"Failed to parse AI response: {str(e)}\nResponse: {response}")
+        raise ValueError(f"Failed to parse AI response: {str(e)}\nResponse:\n{response}")
 
 def generate_pr_content(branch: str = None, progress: Progress = None) -> Dict[str, str]:
     """Generate PR title, body, and labels using AI"""
