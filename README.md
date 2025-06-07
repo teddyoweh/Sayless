@@ -1,184 +1,69 @@
-# Sayless 🤖
+# Sayless
 
-Sayless is an AI-powered Git commit message generator and repository analysis tool. It uses advanced AI models to generate meaningful commit messages, search through your commit history, and provide insightful summaries of your repository changes.
+Your intelligent Git companion that streamlines repository workflows through AI. Sayless handles everything from commit messages to PR management, making version control more intuitive and efficient.
 
-## Features
+## Core Capabilities
 
-### 🎯 Smart Commit Message Generation
-- Automatically generates meaningful commit messages based on your staged changes
-- Supports both OpenAI (GPT-4) and Ollama (local AI) for message generation
-- Preview mode to review generated messages before committing
+### Intelligent Git Operations
+- Generate precise commit messages that capture the essence of your changes
+- Create meaningful branch names based on your work context
+- Get instant PR descriptions that highlight key changes and impact
+- Search your entire commit history using natural language
 
-### 🔍 Semantic Commit Search
-- Search through your commit history using natural language
-- AI-powered relevance scoring and grouping
-- Automatic commit indexing for fast searches
-- Detailed summaries of matching commits
+### Repository Insights
+- Get clear summaries of codebase changes over time
+- Understand the impact of specific commits or PRs
+- Track development progress with automated reports
+- Export insights for team reviews and documentation
 
-### 📊 Repository Analysis
-- Generate summaries of changes over specific time periods
-- Detailed analysis of individual commits
-- Impact assessment and technical details for each commit
-- Export summaries to markdown files
+### Flexible AI Integration
+- Use OpenAI for cloud-based processing
+- Run everything locally with Ollama for complete privacy
+- Switch between providers seamlessly based on your needs
 
-### 🔄 Flexible AI Provider Support
-- OpenAI (GPT-4) for high-quality results
-- Ollama (local AI) for offline/private use
-- Automatic fallback between providers
-- Easy provider switching
+## Quick Start
 
-## Installation
-
-1. Ensure you have Python 3.7+ installed
-2. Install the package using pip:
 ```bash
+# Install
 pip install sayless
-```
 
-## Configuration
-
-### Using OpenAI (Recommended)
-```bash
-# Set your OpenAI API key
+# Configure with OpenAI
 sayless config --openai-key YOUR_API_KEY
 
-# Or use the quick switch command
-sayless switch openai --key YOUR_API_KEY
-```
-
-### Using Ollama (Local AI)
-1. Install Ollama from [ollama.ai](https://ollama.ai)
-2. Switch to Ollama:
-```bash
+# Or use Ollama locally
 sayless switch ollama
 ```
 
-## Usage
+## Daily Workflow
 
-### Generate Commit Messages
 ```bash
-# Stage your changes first
-git add .
+# Generate commits
+sl g                    # Generate commit from staged changes
+sl g -a                 # Stage all changes and commit
 
-# Generate and create a commit (full command)
-sayless generate
+# Branch management
+sl branch "Add auth"    # Create and switch to a contextual branch
+sl branches            # List branches with summaries
 
-# Generate and create a commit (short alias)
-sl g
+# Pull requests
+sl pr create           # Create a PR with smart title and description
+sl pr list --details   # List PRs with AI insights
 
-# Preview without committing
-sayless generate --preview
-
-# Auto-stage all changes and generate commit
-sayless generate -a
-# or
-sl g -a
-```
-
-### Search Commits
-```bash
-# Search for commits related to a topic
-sayless search "fix authentication bug"
-
-# Index all commits before searching
-sayless search "api improvements" --index-all
-
-# Limit search results
-sayless search "database optimization" --limit 10
-```
-
-### Analyze Changes
-```bash
-# Get detailed analysis of a specific commit
-sayless summary <commit-hash> --detailed
-
-# Summarize changes since last week
-sayless since 1w
-
-# Summarize changes between dates
-sayless since 2023-01-01 --until 2023-12-31
-
-# Save summary to file
-sayless since 1m --save
-```
-
-### Configuration Commands
-```bash
-# Show current configuration
-sayless config --show
-
-# Switch AI providers
-sayless switch openai --key YOUR_API_KEY
-sayless switch ollama
-
-# Change models
-sayless switch openai --model gpt-4
-sayless switch ollama --model llama2
-```
-
-### Branch Management
-```bash
-# Create a new branch with AI-generated name from description
-sayless branch "Add user authentication system"
-# Creates and switches to branch like: feat/add-user-authentication-system
-
-# Create branch without switching to it
-sayless branch "Add logging system" --no-checkout
-
-# Auto-generate branch name from staged changes
-git add .  # Stage your changes first
-sayless branch -g  # AI analyzes changes and creates appropriate branch
-
-# Auto-stage and generate branch name in one command
-sayless branch -g -a  # Runs git add . and generates branch name
-
-# List branches
-sayless branches
-
-# List branches with AI-generated summaries
-sayless branches --details
-```
-
-### Pull Request Management
-```bash
-# Create a PR with AI-generated title, description, and labels
-sayless pr create
-
-# Create PR targeting specific base branch
-sayless pr create --base develop
-
-# Create PR with AI insights
-sayless pr create --details
-
-# Create PR without auto-pushing branch
-sayless pr create --no-push
-
-# List open PRs
-sayless pr list
-
-# List PRs with AI-generated insights
-sayless pr list --details
+# Search and analyze
+sl search "auth fixes"  # Find relevant commits
+sl since 1w            # Summarize last week's changes
 ```
 
 ## Requirements
-
 - Python 3.7+
 - Git
-- For OpenAI: Valid API key and internet connection
-- For Ollama: Local Ollama installation
-
-## Environment Variables
-
-- `OPENAI_API_KEY`: Your OpenAI API key (alternative to using --openai-key)
+- OpenAI API key (for cloud features) or Ollama (for local processing)
 
 ## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
+We welcome contributions! Check out our [contribution guidelines](CONTRIBUTING.md) to get started.
 
 ## License
-
-MIT License - feel free to use this in your own projects!
+MIT License
 
 ## Support
-
-If you encounter any issues or have questions, please open an issue on GitHub. 
+Open an issue on GitHub for bugs or feature requests. For usage questions, check our [documentation](https://sayless.dev). 
