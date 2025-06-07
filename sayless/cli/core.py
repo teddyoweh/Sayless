@@ -688,43 +688,58 @@ def summary(
             # Get commit details
             message, diff, date = get_commit_details_for_hash(commit_hash)
             
+            # Extract stats for better context
+            stats_section = diff.split('Stats:')[1].split('Details:')[0].strip()
+            details_section = diff.split('Details:')[1].strip()
+            
             # Prepare the prompt based on detail level
             if detailed:
-                prompt = f"""Analyze this commit and provide a detailed summary:
+                prompt = f"""As an AI Git Copilot, analyze this commit and provide a detailed, practical summary.
 
-Commit Message:
-{message}
+Context:
+- Commit Message: {message}
+- Changed Files: {stats_section}
 
 Changes:
-{diff}
+{details_section}
 
-Provide the analysis in this format:
+Provide a clear, developer-focused analysis in this format:
+
 <summary>
-A clear, concise summary of the main changes
+Write a clear, practical explanation of what changed and why. Focus on real-world impact.
+Example: "Updated the welcome message to better reflect the tool's expanded capabilities as a Git Copilot/Autopilot."
 </summary>
 
 <impact>
-The potential impact of these changes
+- List the main effects of these changes
+- Focus on practical implications
+- Note any workflow changes
 </impact>
 
 <details>
-Key technical details and important changes
+- List key technical changes
+- Note important file modifications
+- Highlight any considerations
 </details>"""
             else:
-                prompt = f"""Given this commit, provide a natural, concise summary of what it does:
+                prompt = f"""As an AI Git Copilot, provide a clear, practical summary of this commit.
 
-Commit Message:
-{message}
+Context:
+- Commit Message: {message}
+- Changed Files: {stats_section}
 
 Changes:
-{diff}
+{details_section}
 
-Focus on:
-1. What changed (files and functionality)
-2. Why it changed (purpose and context)
-3. Impact of the changes
+Create a natural, developer-focused summary that:
+1. Explains what changed in practical terms
+2. Why it was changed (real-world context)
+3. How it affects usage/workflow
 
-Respond with a clear, concise summary."""
+Example good summary:
+"Updated the application's welcome message from 'AI Commit Message Generator' to 'AI Git Copilot / Autopilot' to better reflect its expanded capabilities in automating Git workflows."
+
+Keep it clear and practical, focusing on what developers need to know."""
 
             # Get AI summary with fallback
             try:
@@ -764,8 +779,8 @@ Respond with a clear, concise summary."""
                             "[bold cyan]Technical Details[/bold cyan]",
                             f"[white]{details_part}[/white]",
                             "",
-                            "[bold cyan]Stats[/bold cyan]",
-                            f"[white]{diff.split('Stats:')[1].split('Details:')[0].strip()}[/white]"
+                            "[bold cyan]Files Changed[/bold cyan]",
+                            f"[white]{stats_section}[/white]"
                         ]),
                         title=f"[yellow]commit {commit_hash[:8]} • {formatted_date}[/yellow]",
                         border_style="yellow",
@@ -779,8 +794,8 @@ Respond with a clear, concise summary."""
                             "",
                             f"[white]{summary_text}[/white]",
                             "",
-                            "[bold cyan]Stats[/bold cyan]",
-                            f"[white]{diff.split('Stats:')[1].split('Details:')[0].strip()}[/white]"
+                            "[bold cyan]Files Changed[/bold cyan]",
+                            f"[white]{stats_section}[/white]"
                         ]),
                         title=f"[yellow]commit {commit_hash[:8]} • {formatted_date}[/yellow]",
                         border_style="yellow",
@@ -794,8 +809,8 @@ Respond with a clear, concise summary."""
                         "",
                         f"[white]{summary_text}[/white]",
                         "",
-                        "[bold cyan]Stats[/bold cyan]",
-                        f"[white]{diff.split('Stats:')[1].split('Details:')[0].strip()}[/white]"
+                        "[bold cyan]Files Changed[/bold cyan]",
+                        f"[white]{stats_section}[/white]"
                     ]),
                     title=f"[yellow]commit {commit_hash[:8]} • {formatted_date}[/yellow]",
                     border_style="yellow",
