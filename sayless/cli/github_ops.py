@@ -61,6 +61,65 @@ class GitHubAPI:
             ))
             sys.exit(1)
 
+    def get_pr_by_number(self, pr_number: int) -> Dict:
+        """Get PR details by number"""
+        url = f"{self.api_url}/repos/{self.owner}/{self.repo}/pulls/{pr_number}"
+        response = requests.get(url, headers=self.headers)
+        if response.status_code != 200:
+            raise Exception(f"PR #{pr_number} not found or inaccessible")
+        return response.json()
+
+    def get_pr_diff(self, pr_number: int) -> str:
+        """Get the diff for a specific PR"""
+        url = f"{self.api_url}/repos/{self.owner}/{self.repo}/pulls/{pr_number}"
+        headers = {**self.headers, "Accept": "application/vnd.github.v3.diff"}
+        response = requests.get(url, headers=headers)
+        if response.status_code != 200:
+            raise Exception(f"Failed to get diff for PR #{pr_number}")
+        return response.text
+
+    def get_pr_files(self, pr_number: int) -> List[Dict]:
+        """Get list of files changed in a PR"""
+        url = f"{self.api_url}/repos/{self.owner}/{self.repo}/pulls/{pr_number}/files"
+        response = requests.get(url, headers=self.headers)
+        if response.status_code != 200:
+            raise Exception(f"Failed to get files for PR #{pr_number}")
+        return response.json()
+
+    def post_pr_review(self, pr_number: int, body: str, event: str = "COMMENT", comments: List[Dict] = None) -> Dict:
+        """Post a review on a PR"""
+        url = f"{self.api_url}/repos/{self.owner}/{self.repo}/pulls/{pr_number}/reviews"
+        data = {
+            "body": body,
+            "event": event  # COMMENT, APPROVE, REQUEST_CHANGES
+        }
+        if comments:
+            data["comments"] = comments
+        
+        response = requests.post(url, headers=self.headers, json=data)
+        if response.status_code != 200:
+            raise Exception(f"Failed to post review: {response.json().get('message', 'Unknown error')}")
+        return response.json()
+
+    def post_pr_comment(self, pr_number: int, body: str) -> Dict:
+        """Post a general comment on a PR"""
+        url = f"{self.api_url}/repos/{self.owner}/{self.repo}/issues/{pr_number}/comments"
+        data = {"body": body}
+        response = requests.post(url, headers=self.headers, json=data)
+        if response.status_code != 201:
+            raise Exception(f"Failed to post comment: {response.json().get('message', 'Unknown error')}")
+        return response.json()
+
+    def get_current_pr(self) -> Optional[Dict]:
+        """Get PR for current branch if it exists"""
+        current_branch = get_current_branch()
+        url = f"{self.api_url}/repos/{self.owner}/{self.repo}/pulls"
+        params = {"head": f"{self.owner}:{current_branch}", "state": "open"}
+        response = requests.get(url, headers=self.headers, params=params)
+        if response.status_code == 200 and response.json():
+            return response.json()[0]
+        return None
+
     def validate_pr_params(self, head: str, base: str) -> None:
         """Validate PR parameters before creation"""
         try:
@@ -607,46 +666,54 @@ def create_pr(base: str = None, show_details: bool = False, auto_push: bool = Tr
             sys.exit(1)
 
 def list_prs(show_details: bool = False) -> None:
-    """List pull requests with optional AI-generated insights"""
-    github = GitHubAPI()
+    """List pull requests with optional AI insights"""
+    github_api = GitHubAPI()
     
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
         console=console
     ) as progress:
-        task = progress.add_task("Getting pull requests...", total=None)
+        task = progress.add_task("Fetching pull requests...", total=None)
         
         try:
-            prs = github.list_prs()
+            prs = github_api.list_prs()
             progress.update(task, completed=True)
             
             if not prs:
-                console.print("[yellow]No open pull requests found[/yellow]")
+                console.print(Panel(
+                    "[yellow]No open pull requests found[/yellow]",
+                    title="Pull Requests",
+                    border_style="yellow"
+                ))
                 return
             
-            # Create table
-            table = Table(title="Pull Requests", show_header=True, header_style="bold cyan")
-            table.add_column("#", style="cyan", justify="right")
-            table.add_column("Title", style="white")
-            table.add_column("Author", style="yellow")
-            table.add_column("Status", style="green")
+            table = Table(title="Open Pull Requests", show_header=True, header_style="bold cyan")
+            table.add_column("#", style="cyan", width=6)
+            table.add_column("Title", style="white", min_width=30)
+            table.add_column("Author", style="green")
+            table.add_column("Branch", style="yellow")
+            if show_details:
+                table.add_column("AI Insights", style="blue", min_width=40)
             
-            for pr in prs:
-                status = []
-                if pr['draft']:
-                    status.append("[yellow]Draft[/yellow]")
-                if pr['mergeable']:
-                    status.append("[green]Ready[/green]")
-                else:
-                    status.append("[red]Conflicts[/red]")
-                
+            for pr in prs[:10]:  # Limit to 10 PRs
                 row = [
                     str(pr['number']),
-                    pr['title'],
+                    pr['title'][:50] + ('...' if len(pr['title']) > 50 else ''),
                     pr['user']['login'],
-                    " ".join(status)
+                    pr['head']['ref']
                 ]
+                
+                if show_details:
+                    # Generate AI insights for the PR
+                    task_insight = progress.add_task(f"Analyzing PR #{pr['number']}...", total=None)
+                    try:
+                        insights = generate_pr_insights(pr)
+                        progress.update(task_insight, completed=True)
+                        row.append(insights)
+                    except Exception:
+                        progress.update(task_insight, visible=False)
+                        row.append("[dim]Unable to generate insights[/dim]")
                 
                 table.add_row(*row)
             
@@ -654,5 +721,333 @@ def list_prs(show_details: bool = False) -> None:
             
         except Exception as e:
             progress.update(task, visible=False)
-            console.print(Panel(f"[red]Failed to list PRs: {str(e)}[/red]", title="Error", border_style="red"))
-            sys.exit(1) 
+            console.print(Panel(
+                f"[red]Failed to list pull requests: {str(e)}[/red]",
+                title="Error",
+                border_style="red"
+            ))
+
+def generate_pr_insights(pr: Dict) -> str:
+    """Generate quick AI insights about a PR"""
+    try:
+        provider = settings.get_provider()
+        model = settings.get_model()
+        
+        # Get basic PR info
+        title = pr['title']
+        body = pr.get('body', '') or ''
+        
+        prompt = f"""Provide a one-line insight about this pull request:
+
+Title: {title}
+Description: {body[:200]}...
+
+Focus on the main purpose and potential impact. Keep it under 50 characters."""
+
+        if provider == 'openai':
+            api_key = settings.get_openai_api_key()
+            ai = OpenAIProvider(api_key)
+        else:
+            ai = OllamaProvider()
+        
+        insight = ai.generate_commit_message(prompt, model).strip()
+        return insight[:50] + ('...' if len(insight) > 50 else '')
+    except Exception:
+        return "No insights available"
+
+def generate_code_review(diff: str, files_changed: List[str] = None, pr_context: Dict = None) -> Dict[str, str]:
+    """Generate AI-powered code review"""
+    provider = settings.get_provider()
+    model = settings.get_model()
+    
+    # Create context information
+    context = ""
+    if pr_context:
+        context += f"PR Title: {pr_context.get('title', '')}\n"
+        context += f"PR Description: {pr_context.get('body', '')[:300]}...\n\n"
+    
+    if files_changed:
+        context += f"Files Changed: {', '.join(files_changed[:10])}\n\n"
+    
+    # Truncate diff if too large (using the existing logic from ai_providers)
+    from .ai_providers import AIProvider
+    estimated_tokens = AIProvider.estimate_tokens(diff)
+    
+    if estimated_tokens > 60000:  # Leave room for prompt and response
+        console.print(f"[yellow]Large diff detected ({estimated_tokens:,} estimated tokens). Using intelligent analysis...[/yellow]")
+        if estimated_tokens > 150000:
+            diff_summary = AIProvider.get_diff_summary(diff)
+            diff = f"SUMMARY OF CHANGES:\n{diff_summary}\n\nFIRST 100 LINES OF DIFF:\n" + '\n'.join(diff.split('\n')[:100])
+        else:
+            diff = AIProvider.truncate_diff_intelligently(diff, max_tokens=60000)
+    
+    prompt = f"""You are reviewing a teammate's pull request. Give me your honest thoughts in exactly one conversational sentence.
+
+CRITICAL: Do NOT repeat the commit message or PR title. Do NOT use any formatting. Write like you're casually talking to a colleague.
+
+{context}
+
+CODE CHANGES:
+{diff}
+
+You are a colleague doing a casual + thorough code review. First, explain thoroughly what was implemented, what was done, that sort of stuff. Then you can proceed to explain the codechanges, Respond with  natural VERY short pargraphs  giving your honest thoughts about the code changes made, Once was made basically catching someone up to date, like what was done and why, Jin just made the connotations of potential logics, but I want you to be very dynamic in the way you write this, think and reason properly and naturally. . DO NOT repeat commit messages or use any formatting. Talk like you're sitting next to a teammate.
+Remember, keep it concise so you can read it with a couple of glances. 
+WRITE IN A CONVERSATIONAL LANGUAGE, LIKE YOU'RE SITTING NEXT TO A TEAMMATE. AND WRITE WITH INSANE CLARITY 
+Your casual review:"""
+
+    try:
+        if provider == 'openai':
+            api_key = settings.get_openai_api_key()
+            ai = OpenAIProvider(api_key)
+        else:
+            ai = OllamaProvider()
+        
+        # Generate the review
+        review = ai.generate_commit_message(prompt, model)
+        
+        # Check if review was generated
+        if not review or not review.strip():
+            raise Exception(f"AI provider {provider} returned empty response")
+        
+        # For single sentence reviews, determine assessment from sentiment
+        assessment = "COMMENT"  # default for single sentence reviews
+        
+        # Simple sentiment analysis for assessment
+        review_lower = review.lower()
+        if any(word in review_lower for word in ['looks good', 'solid', 'clean', 'confident', 'nice', 'well done', 'great']):
+            if not any(word in review_lower for word in ['but', 'however', 'though', 'issue', 'problem', 'concern']):
+                assessment = "APPROVE"
+        elif any(word in review_lower for word in ['issue', 'problem', 'concern', 'fix', 'before merge', 'needs']):
+            assessment = "REQUEST_CHANGES"
+        
+        # Clean up the review (remove any extra formatting)
+        clean_review = review.strip()
+        if clean_review.startswith('"') and clean_review.endswith('"'):
+            clean_review = clean_review[1:-1]
+        
+        return {
+            'review': clean_review,
+            'assessment': assessment
+        }
+        
+    except Exception as e:
+        error_msg = str(e)
+        
+        # Try fallback to Ollama if OpenAI fails
+        if provider == 'openai' and ("token" in error_msg.lower() or "limit" in error_msg.lower() or "context" in error_msg.lower()):
+            try:
+                fallback_ai = OllamaProvider()
+                review = fallback_ai.generate_commit_message(prompt, "llama2")
+                if review and review.strip():
+                    return {
+                        'review': review,
+                        'assessment': "COMMENT"
+                    }
+                else:
+                    raise Exception("Ollama also returned empty response")
+            except Exception as fallback_error:
+                raise Exception(f"Both AI providers failed. OpenAI: {error_msg}, Ollama: {str(fallback_error)}")
+        
+        raise Exception(f"Review generation failed with {provider}: {error_msg}")
+
+def review_current_branch(auto_comment: bool = False) -> None:
+    """Review changes in the current branch"""
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console
+    ) as progress:
+        try:
+            # Check if we're in a PR branch
+            github_api = GitHubAPI()
+            current_pr = github_api.get_current_pr()
+            
+            if current_pr and auto_comment:
+                console.print(f"[cyan]Found existing PR #{current_pr['number']} for this branch[/cyan]")
+                review_pr(current_pr['number'], auto_comment=True)
+                return
+            
+            # Get branch changes
+            task = progress.add_task("Getting branch changes...", total=None)
+            current_branch = get_current_branch()
+            
+            # Find base branch
+            base_branch = 'main' if run_git_command(['rev-parse', '--verify', 'main'], check=False).returncode == 0 else 'master'
+            
+            # Get changes between base and current branch
+            try:
+                merge_base = run_git_command(['merge-base', base_branch, current_branch]).stdout.strip()
+                diff = run_git_command(['diff', merge_base, current_branch]).stdout
+                files_changed = run_git_command(['diff', '--name-only', merge_base, current_branch]).stdout.strip().split('\n')
+                files_changed = [f for f in files_changed if f.strip()]
+            except:
+                # Fallback to staged changes if branch comparison fails
+                diff = run_git_command(['diff', '--cached']).stdout
+                files_changed = run_git_command(['diff', '--cached', '--name-only']).stdout.strip().split('\n')
+                files_changed = [f for f in files_changed if f.strip()]
+            
+            if not diff.strip():
+                progress.update(task, visible=False)
+                console.print(Panel(
+                    "[yellow]No changes found to review[/yellow]\n\n"
+                    "[blue]Try one of these:[/blue]\n"
+                    "• Make some changes and stage them\n"
+                    "• Switch to a branch with changes\n"
+                    "• Review a specific PR: [cyan]sayless review --pr 123[/cyan]",
+                    title="No Changes",
+                    border_style="yellow"
+                ))
+                return
+            
+            progress.update(task, completed=True)
+            
+            # Generate review
+            task_review = progress.add_task("Generating AI code review...", total=None)
+            review_result = generate_code_review(diff, files_changed)
+            progress.update(task_review, completed=True)
+            
+            # Display review
+            console.print(Panel(
+                review_result['review'],
+                title=f"[cyan]Code Review - {current_branch}[/cyan]",
+                border_style="cyan",
+                padding=(1, 2)
+            ))
+            
+            if current_pr and not auto_comment:
+                console.print(f"\n[blue]💡 This branch has PR #{current_pr['number']}. To post this review:[/blue]")
+                console.print(f"[blue]   sayless review --pr {current_pr['number']} --auto-comment[/blue]")
+            
+        except Exception as e:
+            for task_id in progress.task_ids:
+                progress.update(task_id, visible=False)
+            console.print(Panel(
+                f"[red]Failed to review branch: {str(e)}[/red]",
+                title="Error",
+                border_style="red"
+            ))
+
+def review_pr(pr_number: int, auto_comment: bool = False) -> None:
+    """Review a specific PR"""
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console
+    ) as progress:
+        try:
+            github_api = GitHubAPI()
+            
+            # Get PR info
+            task = progress.add_task(f"Getting PR #{pr_number} details...", total=None)
+            pr = github_api.get_pr_by_number(pr_number)
+            progress.update(task, completed=True)
+            
+            # Get PR diff and files
+            task_diff = progress.add_task("Getting PR changes...", total=None)
+            diff = github_api.get_pr_diff(pr_number)
+            files = github_api.get_pr_files(pr_number)
+            files_changed = [f['filename'] for f in files]
+            progress.update(task_diff, completed=True)
+            
+            # Generate review
+            task_review = progress.add_task("Generating AI code review...", total=None)
+            pr_context = {
+                'title': pr['title'],
+                'body': pr.get('body', '') or '',
+                'author': pr['user']['login']
+            }
+            
+            try:
+                review_result = generate_code_review(diff, files_changed, pr_context)
+                progress.update(task_review, completed=True)
+                
+                # Debug: Check if review is complete
+                if not review_result or not review_result.get('review'):
+                    raise Exception("AI generated empty review")
+                
+                review_text = review_result['review']
+                
+                # Display review
+                console.print(Panel(
+                    f"**PR #{pr_number}: {pr['title']}**\n"
+                    f"Author: {pr['user']['login']}\n"
+                    f"Branch: `{pr['head']['ref']}` → `{pr['base']['ref']}`\n\n"
+                    f"{review_text}",
+                    title="[cyan]AI Code Review[/cyan]",
+                    border_style="cyan",
+                    padding=(1, 2)
+                ))
+                
+            except Exception as review_error:
+                progress.update(task_review, visible=False)
+                
+                # Fallback: show basic PR info and a simple analysis
+                console.print(Panel(
+                    f"**PR #{pr_number}: {pr['title']}**\n"
+                    f"Author: {pr['user']['login']}\n"
+                    f"Branch: `{pr['head']['ref']}` → `{pr['base']['ref']}`\n\n"
+                    f"## Simple Analysis\n"
+                    f"This PR modifies {len(files_changed)} files:\n"
+                    f"• {', '.join(files_changed[:5])}\n"
+                    f"{'• ...' if len(files_changed) > 5 else ''}\n\n"
+                    f"AI review generation failed. Try again or check your AI provider configuration.",
+                    title="[yellow]Basic PR Info[/yellow]",
+                    border_style="yellow",
+                    padding=(1, 2)
+                ))
+                return
+            
+            if auto_comment:
+                # Post review to GitHub
+                task_post = progress.add_task("Posting review to GitHub...", total=None)
+                try:
+                    review_body = f"## 🤖 AI Code Review\n\n{review_result['review']}"
+                    github_api.post_pr_review(
+                        pr_number, 
+                        review_body, 
+                        event=review_result['assessment']
+                    )
+                    progress.update(task_post, completed=True)
+                    console.print(f"\n[green]✅ Review posted to PR #{pr_number}![/green]")
+                    console.print(f"[blue]View at: {pr['html_url']}[/blue]")
+                except Exception as e:
+                    progress.update(task_post, visible=False)
+                    console.print(f"\n[red]Failed to post review: {str(e)}[/red]")
+            else:
+                console.print(f"\n[blue]💡 To post this review to GitHub:[/blue]")
+                console.print(f"[blue]   sayless review --pr {pr_number} --auto-comment[/blue]")
+            
+        except Exception as e:
+            for task_id in progress.task_ids:
+                progress.update(task_id, visible=False)
+            console.print(Panel(
+                f"[red]Failed to review PR: {str(e)}[/red]",
+                title="Error",
+                border_style="red"
+            ))
+
+def review_with_auto_comment() -> None:
+    """Review current branch and auto-post if PR exists"""
+    try:
+        github_api = GitHubAPI()
+        current_pr = github_api.get_current_pr()
+        
+        if current_pr:
+            console.print(f"[cyan]Found PR #{current_pr['number']} for current branch[/cyan]")
+            review_pr(current_pr['number'], auto_comment=True)
+        else:
+            console.print(Panel(
+                "[yellow]No PR found for current branch[/yellow]\n\n"
+                "[blue]Options:[/blue]\n"
+                "• Create a PR first: [cyan]sayless pr create[/cyan]\n"
+                "• Review without posting: [cyan]sayless review[/cyan]\n"
+                "• Review specific PR: [cyan]sayless review --pr 123 --auto-comment[/cyan]",
+                title="No PR Found",
+                border_style="yellow"
+            ))
+    except Exception as e:
+        console.print(Panel(
+            f"[red]Failed to find PR: {str(e)}[/red]",
+            title="Error",
+            border_style="red"
+        )) 
