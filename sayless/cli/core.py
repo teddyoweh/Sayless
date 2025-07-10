@@ -21,7 +21,8 @@ from dateutil.relativedelta import relativedelta
 import asyncio
 from .embeddings import CommitEmbeddings
 from .git_ops import create_branch, list_branches, run_git_command
-from .github_ops import create_pr, list_prs
+from .github_ops import create_pr, list_prs, enhanced_review_pr, bulk_review_prs, compare_review_types, show_review_templates, review_current_branch_enhanced
+from .dependency_manager import DependencyManager
 
 app = typer.Typer(help="AI Git Copilot / Autopilot")
 console = Console()
@@ -367,13 +368,28 @@ def get_commit_details_for_hash(commit_hash: str) -> Tuple[str, str, str]:
         raise Exception(f"Failed to get commit details: {error_msg}")
 
 async def index_commit(commit_hash: str, progress=None):
-    """Index a single commit"""
+    """Index a single commit with robust error handling"""
     try:
         message, diff, date = get_commit_details_for_hash(commit_hash)
         embeddings = CommitEmbeddings()
-        tags = embeddings.get_commit_tags(message, diff)
-        await embeddings.add_commit(commit_hash, message, diff, date, tags)
-        return True
+        
+        # Generate tags with error handling
+        try:
+            tags = embeddings.get_commit_tags(message, diff)
+        except Exception as tag_error:
+            if progress:
+                console.print(f"[yellow]Failed to generate tags for commit {commit_hash}: {str(tag_error)}[/yellow]")
+            tags = []  # Continue with empty tags
+        
+        # Add commit to index with error handling
+        try:
+            await embeddings.add_commit(commit_hash, message, diff, date, tags)
+            return True
+        except Exception as embed_error:
+            if progress:
+                console.print(f"[yellow]Failed to add commit {commit_hash} to index: {str(embed_error)}[/yellow]")
+            return False
+            
     except Exception as e:
         if progress:
             console.print(f"[yellow]Failed to index commit {commit_hash}: {str(e)}[/yellow]")
@@ -657,16 +673,16 @@ def _generate_command(preview: bool, auto_add: bool):
                     # Index the commit
                     task_index = commit_progress.add_task("Indexing commit for search...", total=None)
                     try:
-                        success = asyncio.run(index_commit(commit_hash))
+                        success = asyncio.run(index_commit(commit_hash, progress=commit_progress))
                         if success:
                             commit_progress.update(task_index, completed=True)
                             console.print("[green]✓[/green] Commit indexed for search")
                         else:
                             commit_progress.update(task_index, visible=False)
-                            console.print("\n[yellow]Note: Failed to index commit[/yellow]")
+                            console.print("\n[yellow]Note: Failed to index commit (large diff or API limits)[/yellow]")
                     except Exception as e:
                         commit_progress.update(task_index, visible=False)
-                        console.print(f"\n[yellow]Note: Failed to index commit: {str(e)}[/yellow]")
+                        console.print(f"\n[yellow]Note: Failed to index commit (this won't affect the commit): {str(e)[:100]}[/yellow]")
                     
                 except subprocess.CalledProcessError as e:
                     commit_progress.update(task_commit, visible=False)
@@ -1174,6 +1190,455 @@ def pr_command(
         console.print(f"[red]Unknown action: {action}[/red]")
         console.print("Valid actions: create, list")
         sys.exit(1)
+
+@app.command("deps")
+def deps_command(
+    action: str = typer.Argument("analyze", help="Action: analyze, check, update"),
+    commit: str = typer.Option(None, "--commit", "-c", help="Analyze specific commit hash"),
+    ecosystem: str = typer.Option(None, "--ecosystem", "-e", help="Focus on specific ecosystem (npm, pip, poetry)"),
+    auto_fix: bool = typer.Option(False, "--auto-fix", help="Automatically apply recommended fixes"),
+):
+    """Intelligent dependency management and analysis"""
+    show_welcome_message()
+    ensure_openai_configured()
+    
+    dep_manager = DependencyManager()
+    
+    if action == "analyze":
+        analyze_dependencies(dep_manager, commit_hash=commit, auto_fix=auto_fix)
+    elif action == "check":
+        check_dependency_updates(dep_manager, ecosystem=ecosystem)
+    elif action == "update":
+        update_dependencies(dep_manager, ecosystem=ecosystem, auto_fix=auto_fix)
+    else:
+        console.print(f"[red]Unknown action: {action}[/red]")
+        console.print("Valid actions: analyze, check, update")
+        sys.exit(1)
+
+@app.command("analyze-deps")
+def analyze_deps_alias(
+    commit: str = typer.Option(None, "--commit", "-c", help="Analyze specific commit hash"),
+    auto_fix: bool = typer.Option(False, "--auto-fix", help="Automatically apply recommended fixes"),
+):
+    """Quick alias for dependency analysis"""
+    show_welcome_message()
+    ensure_openai_configured()
+    
+    dep_manager = DependencyManager()
+    analyze_dependencies(dep_manager, commit_hash=commit, auto_fix=auto_fix)
+
+def analyze_dependencies(dep_manager: DependencyManager, commit_hash: str = None, auto_fix: bool = False):
+    """Analyze dependency changes in commits"""
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console
+    ) as progress:
+        try:
+            task = progress.add_task("Analyzing dependency changes...", total=None)
+            
+            # Analyze changes
+            changes = dep_manager.analyze_commit_dependencies(commit_hash)
+            progress.update(task, completed=True)
+            
+            # Also analyze code for missing dependencies
+            task_code = progress.add_task("Scanning code for missing dependencies...", total=None)
+            detected_deps = dep_manager.analyze_code_for_dependencies(commit_hash)
+            progress.update(task_code, completed=True)
+            
+            if not changes and not detected_deps:
+                console.print(Panel(
+                    "[yellow]No dependency changes or missing dependencies detected[/yellow]\n\n"
+                    "[blue]What I checked:[/blue]\n"
+                    "• package.json (Node.js dependencies)\n"
+                    "• requirements.txt (Python pip dependencies)\n"
+                    "• pyproject.toml (Python Poetry dependencies)\n"
+                    "• package-lock.json and yarn.lock files\n"
+                    "• Code imports (Python, JavaScript/TypeScript)\n\n"
+                    "[dim]💡 Tip: Make dependency changes or add new imports and try again[/dim]",
+                    title="Dependency Analysis",
+                    border_style="yellow"
+                ))
+                return
+            
+            # Generate AI insights
+            task_insights = progress.add_task("Generating AI insights...", total=None)
+            
+            # Create combined context for AI insights
+            if changes and detected_deps:
+                # Combine both types of analysis
+                combined_insights = dep_manager.generate_dependency_insights(changes)
+                
+                # Add detected dependencies context
+                detected_context = f"\n\nAdditionally, detected {len(detected_deps)} missing dependencies from code analysis:\n"
+                for dep in detected_deps[:5]:  # Show first 5
+                    detected_context += f"• {dep.package_name} (from {dep.file_path})\n"
+                if len(detected_deps) > 5:
+                    detected_context += f"• ... and {len(detected_deps) - 5} more\n"
+                
+                insights = combined_insights + detected_context
+            elif changes:
+                insights = dep_manager.generate_dependency_insights(changes)
+            elif detected_deps:
+                # Only detected dependencies, create special insights
+                detected_summary = f"Detected {len(detected_deps)} missing dependencies from code analysis:\n\n"
+                for dep in detected_deps:
+                    detected_summary += f"• {dep.package_name} ({dep.confidence:.0%} confidence) - imported in {dep.file_path}\n"
+                
+                insights = f"Code analysis found missing dependencies that should be added to your dependency files.\n\n{detected_summary}\nRecommendation: Run with --auto-fix to automatically add these dependencies to your package files."
+            else:
+                insights = "No dependency analysis available."
+            
+            progress.update(task_insights, completed=True)
+            
+            # Display results
+            console.print()
+            
+            # Show dependency changes if any
+            if changes:
+                console.print("[bold cyan]🔍 Dependency Changes Detected[/bold cyan]")
+                
+                # Group changes by ecosystem
+                ecosystems = {}
+                for change in changes:
+                    if change.ecosystem not in ecosystems:
+                        ecosystems[change.ecosystem] = []
+                    ecosystems[change.ecosystem].append(change)
+                
+                # Display by ecosystem
+                for ecosystem, eco_changes in ecosystems.items():
+                    console.print(f"\n[bold yellow]📦 {ecosystem.upper()} Dependencies[/bold yellow]")
+                    
+                    table = Table(show_header=True, header_style="bold cyan", box=None)
+                    table.add_column("Package", style="white", min_width=20)
+                    table.add_column("Change", style="green", min_width=12)
+                    table.add_column("Version", style="blue")
+                    
+                    for change in eco_changes:
+                        change_icon = {
+                            'added': '✅',
+                            'removed': '❌',
+                            'updated': '⬆️',
+                            'downgraded': '⬇️'
+                        }.get(change.change_type, '📝')
+                        
+                        if change.change_type == 'added':
+                            version_text = f"[green]+{change.new_version}[/green]"
+                        elif change.change_type == 'removed':
+                            version_text = f"[red]-{change.old_version}[/red]"
+                        else:
+                            version_text = f"[dim]{change.old_version}[/dim] → [green]{change.new_version}[/green]"
+                        
+                        table.add_row(
+                            change.name,
+                            f"{change_icon} {change.change_type}",
+                            version_text
+                        )
+                    
+                    console.print(table)
+            
+            # Show detected missing dependencies if any
+            if detected_deps:
+                if changes:
+                    console.print("\n")  # Add spacing if we showed changes above
+                
+                console.print("[bold magenta]🔎 Missing Dependencies Detected[/bold magenta]")
+                
+                # Group detected dependencies by ecosystem
+                detected_ecosystems = {}
+                for dep in detected_deps:
+                    if dep.ecosystem not in detected_ecosystems:
+                        detected_ecosystems[dep.ecosystem] = []
+                    detected_ecosystems[dep.ecosystem].append(dep)
+                
+                # Display by ecosystem
+                for ecosystem, eco_deps in detected_ecosystems.items():
+                    console.print(f"\n[bold yellow]📦 {ecosystem.upper()} Missing Dependencies[/bold yellow]")
+                    
+                    table = Table(show_header=True, header_style="bold magenta", box=None)
+                    table.add_column("Package", style="white", min_width=20)
+                    table.add_column("Import Statement", style="cyan", min_width=25)
+                    table.add_column("File", style="blue", min_width=15)
+                    table.add_column("Confidence", style="green", min_width=10)
+                    
+                    for dep in eco_deps:
+                        confidence_color = "green" if dep.confidence >= 0.8 else "yellow" if dep.confidence >= 0.6 else "red"
+                        
+                        table.add_row(
+                            dep.package_name,
+                            dep.import_statement[:40] + ("..." if len(dep.import_statement) > 40 else ""),
+                            dep.file_path.split('/')[-1],  # Just the filename
+                            f"[{confidence_color}]{dep.confidence:.0%}[/{confidence_color}]"
+                        )
+                    
+                    console.print(table)
+                
+                # Auto-add functionality
+                if auto_fix:
+                    task_add = progress.add_task("Auto-adding dependencies...", total=None)
+                    add_results = dep_manager.auto_add_dependencies(detected_deps, dry_run=False)
+                    progress.update(task_add, completed=True)
+                    
+                    console.print("\n[bold green]🚀 Auto-Add Results[/bold green]")
+                    
+                    if add_results['added']:
+                        console.print("\n[bold green]✅ Successfully Added[/bold green]")
+                        for added in add_results['added']:
+                            console.print(f"  • {added}")
+                    
+                    if add_results['skipped']:
+                        console.print("\n[bold yellow]⏭️ Skipped[/bold yellow]")
+                        for skipped in add_results['skipped']:
+                            console.print(f"  • {skipped}")
+                    
+                    if add_results['failed']:
+                        console.print("\n[bold red]❌ Failed[/bold red]")
+                        for failed in add_results['failed']:
+                            console.print(f"  • {failed}")
+                    
+                    if add_results['files_updated']:
+                        console.print(f"\n[bold cyan]📝 Files Updated[/bold cyan]")
+                        for file_updated in add_results['files_updated']:
+                            console.print(f"  • {file_updated}")
+                
+                else:
+                    # Show preview of what would be added
+                    preview_results = dep_manager.auto_add_dependencies(detected_deps, dry_run=True)
+                    
+                    if preview_results['added']:
+                        console.print(f"\n[blue]💡 Auto-add preview ({len(preview_results['added'])} packages):[/blue]")
+                        for i, would_add in enumerate(preview_results['added'][:3]):  # Show first 3
+                            console.print(f"  • {would_add}")
+                        if len(preview_results['added']) > 3:
+                            console.print(f"  • ... and {len(preview_results['added']) - 3} more")
+                        
+                        console.print("\n[blue]To automatically add these dependencies:[/blue]")
+                        console.print("[blue]   sayless deps analyze --auto-fix[/blue]")
+            
+            # Display AI insights
+            console.print(Panel(
+                insights,
+                title="[cyan]🤖 AI Analysis & Recommendations[/cyan]",
+                border_style="cyan",
+                padding=(1, 2)
+            ))
+            
+            # Show auto-fix option if applicable
+            if not auto_fix and any(change.change_type in ['updated', 'added'] for change in changes):
+                console.print("\n[blue]💡 Available actions:[/blue]")
+                console.print("• Run with [cyan]--auto-fix[/cyan] to apply recommended updates")
+                console.print("• Use [cyan]sayless deps check[/cyan] to see available updates")
+            
+        except Exception as e:
+            for task_id in progress.task_ids:
+                progress.update(task_id, visible=False)
+            console.print(Panel(
+                f"[red]Failed to analyze dependencies: {str(e)}[/red]",
+                title="Error",
+                border_style="red"
+            ))
+
+def check_dependency_updates(dep_manager: DependencyManager, ecosystem: str = None):
+    """Check for available dependency updates"""
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console
+    ) as progress:
+        try:
+            task = progress.add_task("Checking for updates...", total=None)
+            
+            updates = dep_manager.check_for_updates(ecosystem)
+            progress.update(task, completed=True)
+            
+            has_updates = any(updates.values())
+            
+            if not has_updates:
+                console.print(Panel(
+                    "[green]🎉 All dependencies are up to date![/green]",
+                    title="Dependency Status",
+                    border_style="green"
+                ))
+                return
+            
+            console.print("\n[bold cyan]📋 Available Updates[/bold cyan]")
+            
+            for eco, eco_updates in updates.items():
+                if eco_updates:
+                    console.print(f"\n[bold yellow]📦 {eco.upper()} Updates Available[/bold yellow]")
+                    
+                    for update in eco_updates:
+                        console.print(f"  • {update}")
+            
+            console.print("\n[blue]💡 Next steps:[/blue]")
+            console.print("• Review the changes and update manually")
+            console.print("• Use [cyan]sayless deps update --auto-fix[/cyan] for automated updates")
+            console.print("• Check specific ecosystem: [cyan]sayless deps check --ecosystem npm[/cyan]")
+            
+        except Exception as e:
+            for task_id in progress.task_ids:
+                progress.update(task_id, visible=False)
+            console.print(Panel(
+                f"[red]Failed to check updates: {str(e)}[/red]",
+                title="Error",
+                border_style="red"
+            ))
+
+def update_dependencies(dep_manager: DependencyManager, ecosystem: str = None, auto_fix: bool = False):
+    """Update dependencies with AI guidance"""
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console
+    ) as progress:
+        try:
+            if auto_fix:
+                # Perform actual updates
+                task = progress.add_task("Updating dependencies...", total=None)
+                results = dep_manager.auto_update_dependencies(ecosystem, dry_run=False)
+                progress.update(task, completed=True)
+                
+                # Display results
+                console.print("\n[bold cyan]🚀 Dependency Update Results[/bold cyan]")
+                
+                if results['updated']:
+                    console.print("\n[bold green]✅ Successfully Updated[/bold green]")
+                    for update in results['updated']:
+                        console.print(f"  • {update}")
+                
+                if results['failed']:
+                    console.print("\n[bold red]❌ Failed Updates[/bold red]")
+                    for failure in results['failed']:
+                        console.print(f"  • {failure}")
+                
+                if results['conflicts']:
+                    console.print("\n[bold yellow]⚠️ Conflicts Detected[/bold yellow]")
+                    for conflict in results['conflicts']:
+                        console.print(f"  • {conflict}")
+                
+                # Analyze the changes that were made
+                if results['updated']:
+                    task_analyze = progress.add_task("Analyzing changes for breaking updates...", total=None)
+                    changes = dep_manager.analyze_commit_dependencies()
+                    
+                    if changes:
+                        update_plan = dep_manager.generate_update_plan(changes)
+                        progress.update(task_analyze, completed=True)
+                        
+                        console.print(Panel(
+                            update_plan,
+                            title="[cyan]🤖 AI Update Plan & Recommendations[/cyan]",
+                            border_style="cyan",
+                            padding=(1, 2)
+                        ))
+                    else:
+                        progress.update(task_analyze, completed=True)
+                
+            else:
+                # Dry run mode - show what would be updated
+                task = progress.add_task("Checking what would be updated...", total=None)
+                results = dep_manager.auto_update_dependencies(ecosystem, dry_run=True)
+                progress.update(task, completed=True)
+                
+                console.print("\n[bold cyan]📋 Update Preview (Dry Run)[/bold cyan]")
+                
+                if results['updated']:
+                    console.print("\n[bold yellow]📦 Would Update[/bold yellow]")
+                    for update in results['updated']:
+                        console.print(f"  • {update}")
+                    
+                    console.print("\n[blue]💡 To apply these updates:[/blue]")
+                    console.print(f"[blue]   sayless deps update --auto-fix{f' --ecosystem {ecosystem}' if ecosystem else ''}[/blue]")
+                else:
+                    console.print(Panel(
+                        "[green]🎉 All dependencies are up to date![/green]",
+                        title="Status",
+                        border_style="green"
+                    ))
+                
+                if results['failed']:
+                    console.print("\n[bold red]⚠️ Potential Issues[/bold red]")
+                    for failure in results['failed']:
+                        console.print(f"  • {failure}")
+            
+        except Exception as e:
+            for task_id in progress.task_ids:
+                progress.update(task_id, visible=False)
+            console.print(Panel(
+                f"[red]Failed to update dependencies: {str(e)}[/red]",
+                title="Error",
+                border_style="red"
+            ))
+
+@app.command("review-enhanced")
+def review_enhanced_command(
+    pr_number: int = typer.Option(None, "--pr", help="PR number to review"),
+    review_type: str = typer.Option("quick", "--type", "-t", help="Review type: quick, detailed, security, performance, dependencies"),
+    auto_post: bool = typer.Option(False, "--auto-post", help="Automatically post review to GitHub"),
+    include_checklist: bool = typer.Option(True, "--checklist/--no-checklist", help="Include review checklist"),
+    current_branch: bool = typer.Option(False, "--current", "-c", help="Review current branch"),
+):
+    """Enhanced PR review with structured review types"""
+    if current_branch:
+        review_current_branch_enhanced(review_type, auto_post)
+    elif pr_number:
+        enhanced_review_pr(pr_number, review_type, auto_post, include_checklist)
+    else:
+        console.print(Panel(
+            "[red]Please specify either --pr <number> or --current[/red]\n\n"
+            "[blue]Examples:[/blue]\n"
+            "• Review PR #123: [cyan]sayless review-enhanced --pr 123[/cyan]\n"
+            "• Review current branch: [cyan]sayless review-enhanced --current[/cyan]\n"
+            "• Security review of PR: [cyan]sayless review-enhanced --pr 123 --type security[/cyan]",
+            title="Usage",
+            border_style="yellow"
+        ))
+
+@app.command("bulk-review")
+def bulk_review_command(
+    review_type: str = typer.Option("quick", "--type", "-t", help="Review type: quick, detailed, security, performance, dependencies"),
+    max_prs: int = typer.Option(5, "--max", "-m", help="Maximum number of PRs to review"),
+    auto_post: bool = typer.Option(False, "--auto-post", help="Automatically post reviews to GitHub"),
+):
+    """Review multiple open PRs at once"""
+    bulk_review_prs(review_type, max_prs, auto_post)
+
+@app.command("compare-reviews")
+def compare_reviews_command(
+    pr_number: int = typer.Argument(..., help="PR number to compare review types for"),
+):
+    """Compare multiple review types for the same PR"""
+    compare_review_types(pr_number)
+
+@app.command("review-templates")
+def review_templates_command():
+    """Show available review templates and their details"""
+    show_review_templates()
+
+@app.command("review")
+def review_command(
+    pr_number: int = typer.Option(None, "--pr", help="PR number to review"),
+    auto_comment: bool = typer.Option(False, "--auto-comment", help="Automatically post review to GitHub"),
+    enhanced: bool = typer.Option(False, "--enhanced", help="Use enhanced structured review"),
+    review_type: str = typer.Option("quick", "--type", "-t", help="Review type for enhanced review"),
+):
+    """Review changes in current branch or specific PR"""
+    if enhanced:
+        if pr_number:
+            enhanced_review_pr(pr_number, review_type, auto_comment)
+        else:
+            review_current_branch_enhanced(review_type, auto_comment)
+    else:
+        # Use original review functionality
+        from .github_ops import review_current_branch, review_pr, review_with_auto_comment
+        
+        if pr_number:
+            review_pr(pr_number, auto_comment)
+        else:
+            if auto_comment:
+                review_with_auto_comment()
+            else:
+                review_current_branch(auto_comment)
 
 if __name__ == "__main__":
     app()
