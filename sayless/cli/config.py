@@ -24,6 +24,7 @@ class Config:
                 'provider': 'openai',
                 'model': 'gpt-4o',
                 'openai_api_key': None,
+                'claude_api_key': None,
                 'github_token': None
             }
             self.save_config(self.config)
@@ -44,6 +45,17 @@ class Config:
         # Also set it for the current session
         os.environ['OPENAI_API_KEY'] = api_key
 
+    def get_claude_api_key(self):
+        """Get Claude API key from config or environment"""
+        return os.getenv('ANTHROPIC_API_KEY') or self.config.get('claude_api_key')
+
+    def set_claude_api_key(self, api_key):
+        """Set Claude API key in config and environment"""
+        self.config['claude_api_key'] = api_key
+        self.save_config(self.config)
+        # Also set it for the current session
+        os.environ['ANTHROPIC_API_KEY'] = api_key
+
     def get_github_token(self):
         """Get GitHub token from config or environment"""
         return os.getenv('GITHUB_TOKEN') or self.config.get('github_token')
@@ -56,14 +68,16 @@ class Config:
         os.environ['GITHUB_TOKEN'] = token
 
     def set_provider(self, provider):
-        """Set the AI provider (openai or ollama)"""
-        if provider not in ['ollama', 'openai']:
-            raise ValueError("Provider must be 'openai' or 'ollama'")
+        """Set the AI provider (openai, claude, or ollama)"""
+        if provider not in ['ollama', 'openai', 'claude']:
+            raise ValueError("Provider must be 'openai', 'claude', or 'ollama'")
         self.config['provider'] = provider
         # Set appropriate default model when switching providers
-        if provider == 'openai' and self.config.get('model') == 'llama2':
+        if provider == 'openai' and (self.config.get('model') == 'llama2' or 'claude' in self.config.get('model', '')):
             self.config['model'] = 'gpt-4o'
-        elif provider == 'ollama' and 'gpt' in self.config.get('model', ''):
+        elif provider == 'claude' and (self.config.get('model') == 'llama2' or 'gpt' in self.config.get('model', '')):
+            self.config['model'] = 'claude-3-5-sonnet-20241022'
+        elif provider == 'ollama' and ('gpt' in self.config.get('model', '') or 'claude' in self.config.get('model', '')):
             self.config['model'] = 'llama2'
         self.save_config(self.config)
 

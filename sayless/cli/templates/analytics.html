@@ -1,0 +1,640 @@
+{% extends "base.html" %}
+
+{% block title %}Analytics - Sayless Setup{% endblock %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/date-fns@2.29.0/index.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8 max-w-7xl" x-data="analytics()">
+    <!-- Header -->
+    <div class="mb-8">
+        <div class="flex items-center justify-between">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-900 mb-2">Analytics Dashboard</h1>
+                <p class="text-gray-600">Track your Sayless usage patterns and insights</p>
+            </div>
+            <div class="flex items-center space-x-4">
+                <!-- Time Period Selector -->
+                <select x-model="selectedPeriod" @change="loadAnalytics()" 
+                        class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-sayless-500 focus:border-transparent">
+                    <option value="7">Last 7 days</option>
+                    <option value="30" selected>Last 30 days</option>
+                    <option value="90">Last 90 days</option>
+                </select>
+                
+                <!-- Export Button -->
+                <button @click="exportData()" 
+                        class="flex items-center space-x-2 px-4 py-2 bg-sayless-500 hover:bg-sayless-600 text-white rounded-lg transition-colors">
+                    <i data-lucide="download" class="w-4 h-4"></i>
+                    <span>Export</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading State -->
+    <div x-show="loading" class="flex items-center justify-center py-16">
+        <div class="flex items-center space-x-3">
+            <svg class="w-8 h-8 animate-spin text-sayless-500" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span class="text-lg text-gray-600">Loading analytics...</span>
+        </div>
+    </div>
+
+    <!-- Analytics Content -->
+    <div x-show="!loading" x-transition class="space-y-8">
+        <!-- Key Metrics -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <!-- Total Commands -->
+            <div class="rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 p-6 text-white">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-blue-100 text-sm font-medium">Total Commands</p>
+                        <p class="text-3xl font-bold" x-text="stats.total_commands || 0"></p>
+                    </div>
+                    <div class="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
+                        <i data-lucide="terminal" class="w-6 h-6"></i>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Success Rate -->
+            <div class="rounded-xl bg-gradient-to-br from-green-500 to-green-600 p-6 text-white">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-green-100 text-sm font-medium">Success Rate</p>
+                        <p class="text-3xl font-bold" x-text="Math.round((stats.success_rate || 0) * 100) + '%'"></p>
+                    </div>
+                    <div class="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
+                        <i data-lucide="check-circle" class="w-6 h-6"></i>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Avg Execution Time -->
+            <div class="rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 p-6 text-white">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-purple-100 text-sm font-medium">Avg Execution</p>
+                        <p class="text-3xl font-bold" x-text="formatTime(stats.avg_execution_time || 0)"></p>
+                    </div>
+                    <div class="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
+                        <i data-lucide="clock" class="w-6 h-6"></i>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Most Used Command -->
+            <div class="rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 p-6 text-white">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-orange-100 text-sm font-medium">Top Command</p>
+                        <p class="text-2xl font-bold" x-text="getTopCommand()"></p>
+                    </div>
+                    <div class="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
+                        <i data-lucide="trending-up" class="w-6 h-6"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts Row -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <!-- Usage Over Time -->
+            <div class="card-solid rounded-2xl p-6">
+                <div class="flex items-center justify-between mb-6">
+                    <h3 class="text-lg font-semibold text-gray-900">Usage Over Time</h3>
+                    <div class="flex items-center space-x-2 text-sm text-gray-500">
+                        <div class="w-3 h-3 bg-sayless-500 rounded"></div>
+                        <span>Commands</span>
+                    </div>
+                </div>
+                <div class="relative h-64">
+                    <canvas id="usageChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Command Distribution -->
+            <div class="card-solid rounded-2xl p-6">
+                <div class="flex items-center justify-between mb-6">
+                    <h3 class="text-lg font-semibold text-gray-900">Most Used Commands</h3>
+                    <span class="text-sm text-gray-500">Last <span x-text="selectedPeriod"></span> days</span>
+                </div>
+                <div class="relative h-64">
+                    <canvas id="commandChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Provider Distribution & Performance -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <!-- Provider Usage -->
+            <div class="card-solid rounded-2xl p-6">
+                <div class="flex items-center justify-between mb-6">
+                    <h3 class="text-lg font-semibold text-gray-900">AI Provider Distribution</h3>
+                    <span class="text-sm text-gray-500">Usage by provider</span>
+                </div>
+                <div class="relative h-64">
+                    <canvas id="providerChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Performance Metrics -->
+            <div class="card-solid rounded-2xl p-6">
+                <div class="flex items-center justify-between mb-6">
+                    <h3 class="text-lg font-semibold text-gray-900">Performance Metrics</h3>
+                    <span class="text-sm text-gray-500">Execution times</span>
+                </div>
+                <div class="space-y-4">
+                    <template x-for="(perf, command) in Object.entries(stats.performance_metrics || {}).slice(0, 5)" :key="command">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-3">
+                                <code class="bg-gray-100 px-2 py-1 rounded text-xs font-mono" x-text="perf[0]"></code>
+                                <div class="w-32 bg-gray-200 rounded-full h-2">
+                                    <div class="bg-sayless-500 h-2 rounded-full" 
+                                         :style="`width: ${Math.min((perf[1].avg_time / 5) * 100, 100)}%`"></div>
+                                </div>
+                            </div>
+                            <span class="text-sm text-gray-600" x-text="formatTime(perf[1].avg_time)"></span>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Activity & Error Summary -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <!-- Recent Activity -->
+            <div class="card-solid rounded-2xl p-6">
+                <div class="flex items-center justify-between mb-6">
+                    <h3 class="text-lg font-semibold text-gray-900">Recent Activity</h3>
+                    <span class="text-sm text-gray-500">Latest commands</span>
+                </div>
+                <div class="space-y-3 max-h-64 overflow-y-auto">
+                    <template x-for="activity in stats.recent_activity || []" :key="activity.timestamp">
+                        <div class="flex items-center justify-between p-3 rounded-lg border border-gray-200">
+                            <div class="flex items-center space-x-3">
+                                <div class="w-2 h-2 rounded-full" 
+                                     :class="activity.success ? 'bg-green-500' : 'bg-red-500'"></div>
+                                <code class="text-sm font-mono" x-text="activity.command"></code>
+                                <span class="text-xs text-gray-500" x-text="activity.provider"></span>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-xs text-gray-500" x-text="formatTime(activity.execution_time)"></div>
+                                <div class="text-xs text-gray-400" x-text="formatRelativeTime(activity.timestamp)"></div>
+                            </div>
+                        </div>
+                    </template>
+                    <div x-show="!stats.recent_activity || stats.recent_activity.length === 0" 
+                         class="text-center py-8 text-gray-500">
+                        No recent activity
+                    </div>
+                </div>
+            </div>
+
+            <!-- Error Summary -->
+            <div class="card-solid rounded-2xl p-6">
+                <div class="flex items-center justify-between mb-6">
+                    <h3 class="text-lg font-semibold text-gray-900">Error Summary</h3>
+                    <span class="text-sm text-gray-500">Common issues</span>
+                </div>
+                <div class="space-y-3">
+                    <template x-for="error in stats.error_summary || []" :key="error.command + error.error">
+                        <div class="p-4 rounded-lg bg-red-50 border border-red-200">
+                            <div class="flex items-start justify-between">
+                                <div class="flex-1">
+                                    <div class="flex items-center space-x-2 mb-1">
+                                        <code class="text-sm font-mono text-red-800" x-text="error.command"></code>
+                                        <span class="text-xs bg-red-200 text-red-800 px-2 py-1 rounded-full" x-text="error.count + ' times'"></span>
+                                    </div>
+                                    <p class="text-sm text-red-700" x-text="error.error"></p>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                    <div x-show="!stats.error_summary || stats.error_summary.length === 0" 
+                         class="text-center py-8 text-gray-500">
+                        <i data-lucide="check-circle" class="w-8 h-8 mx-auto text-green-500 mb-2"></i>
+                        <p>No recent errors - great job! 🎉</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Command Success Rates -->
+        <div class="card-solid rounded-2xl p-6">
+            <div class="flex items-center justify-between mb-6">
+                <h3 class="text-lg font-semibold text-gray-900">Command Success Rates</h3>
+                <span class="text-sm text-gray-500">Reliability by command</span>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <template x-for="(rate, command) in stats.command_success_rates || {}" :key="command">
+                    <div class="p-4 rounded-lg border border-gray-200">
+                        <div class="flex items-center justify-between mb-2">
+                            <code class="text-sm font-mono text-gray-700" x-text="command"></code>
+                            <span class="text-sm font-medium" 
+                                  :class="rate.success_rate >= 0.9 ? 'text-green-600' : rate.success_rate >= 0.7 ? 'text-yellow-600' : 'text-red-600'"
+                                  x-text="Math.round(rate.success_rate * 100) + '%'"></span>
+                        </div>
+                        <div class="w-full bg-gray-200 rounded-full h-2 mb-2">
+                            <div class="h-2 rounded-full transition-all duration-500" 
+                                 :class="rate.success_rate >= 0.9 ? 'bg-green-500' : rate.success_rate >= 0.7 ? 'bg-yellow-500' : 'bg-red-500'"
+                                 :style="`width: ${rate.success_rate * 100}%`"></div>
+                        </div>
+                        <div class="flex justify-between text-xs text-gray-500">
+                            <span x-text="rate.total + ' runs'"></span>
+                            <span x-text="formatTime(rate.avg_time)"></span>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <!-- Input/Output Analytics -->
+        <div class="space-y-8">
+            <!-- IO Overview -->
+            <div class="card-solid rounded-2xl p-6">
+                <div class="flex items-center justify-between mb-6">
+                    <h3 class="text-lg font-semibold text-gray-900">Input/Output Analytics</h3>
+                    <span class="text-sm text-gray-500">AI interaction patterns</span>
+                </div>
+                
+                <!-- IO Summary Cards -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                    <div class="p-4 rounded-lg bg-gradient-to-br from-indigo-50 to-indigo-100 border border-indigo-200">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-sm font-medium text-indigo-900">Commands with I/O</p>
+                                <p class="text-2xl font-bold text-indigo-700" x-text="stats.input_output_analytics?.summary?.total_commands_with_io || 0"></p>
+                            </div>
+                            <i data-lucide="arrow-right-left" class="w-8 h-8 text-indigo-600"></i>
+                        </div>
+                    </div>
+                    
+                    <div class="p-4 rounded-lg bg-gradient-to-br from-emerald-50 to-emerald-100 border border-emerald-200">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-sm font-medium text-emerald-900">Avg Input Size</p>
+                                <p class="text-2xl font-bold text-emerald-700" x-text="formatBytes(stats.input_output_analytics?.summary?.avg_input_length || 0)"></p>
+                            </div>
+                            <i data-lucide="download" class="w-8 h-8 text-emerald-600"></i>
+                        </div>
+                    </div>
+                    
+                    <div class="p-4 rounded-lg bg-gradient-to-br from-amber-50 to-amber-100 border border-amber-200">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-sm font-medium text-amber-900">Avg Output Size</p>
+                                <p class="text-2xl font-bold text-amber-700" x-text="formatBytes(stats.input_output_analytics?.summary?.avg_output_length || 0)"></p>
+                            </div>
+                            <i data-lucide="upload" class="w-8 h-8 text-amber-600"></i>
+                        </div>
+                    </div>
+                    
+                    <div class="p-4 rounded-lg bg-gradient-to-br from-rose-50 to-rose-100 border border-rose-200">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-sm font-medium text-rose-900">Input Types</p>
+                                <p class="text-2xl font-bold text-rose-700" x-text="(stats.input_output_analytics?.summary?.input_types || []).length"></p>
+                            </div>
+                            <i data-lucide="file-type" class="w-8 h-8 text-rose-600"></i>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- IO by Command -->
+                <div class="space-y-4">
+                    <h4 class="text-md font-semibold text-gray-800">Input/Output by Command</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <template x-for="command in stats.input_output_analytics?.by_command || []" :key="command.command + command.input_type">
+                            <div class="p-4 rounded-lg border border-gray-200 bg-gray-50">
+                                <div class="flex items-center justify-between mb-2">
+                                    <div class="flex items-center space-x-2">
+                                        <code class="text-sm font-mono text-gray-700" x-text="command.command"></code>
+                                        <span class="text-xs bg-gray-200 text-gray-600 px-2 py-1 rounded" x-text="command.input_type"></span>
+                                    </div>
+                                    <span class="text-sm font-medium text-gray-600" x-text="command.total_io + ' ops'"></span>
+                                </div>
+                                <div class="grid grid-cols-2 gap-4 text-sm">
+                                    <div>
+                                        <span class="text-gray-500">Input:</span>
+                                        <span class="font-medium" x-text="formatBytes(command.avg_input_length)"></span>
+                                    </div>
+                                    <div>
+                                        <span class="text-gray-500">Output:</span>
+                                        <span class="font-medium" x-text="formatBytes(command.avg_output_length)"></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent I/O Samples -->
+            <div class="card-solid rounded-2xl p-6">
+                <div class="flex items-center justify-between mb-6">
+                    <h3 class="text-lg font-semibold text-gray-900">Recent Input/Output Samples</h3>
+                    <span class="text-sm text-gray-500">Latest AI interactions</span>
+                </div>
+                
+                <div class="space-y-4">
+                    <template x-for="sample in stats.input_output_analytics?.recent_samples || []" :key="sample.timestamp">
+                        <div class="p-4 rounded-lg border border-gray-200 bg-gray-50">
+                            <div class="flex items-center justify-between mb-3">
+                                <div class="flex items-center space-x-2">
+                                    <code class="text-sm font-mono text-gray-700" x-text="sample.command"></code>
+                                    <span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded" x-text="sample.input_type"></span>
+                                </div>
+                                <div class="flex items-center space-x-4 text-sm text-gray-500">
+                                    <span x-text="formatBytes(sample.input_length) + ' → ' + formatBytes(sample.output_length)"></span>
+                                    <span x-text="formatRelativeTime(sample.timestamp)"></span>
+                                </div>
+                            </div>
+                            
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <!-- Input Preview -->
+                                <div class="space-y-2">
+                                    <div class="flex items-center space-x-2">
+                                        <i data-lucide="download" class="w-4 h-4 text-green-600"></i>
+                                        <span class="text-sm font-medium text-green-700">Input Preview</span>
+                                    </div>
+                                    <div class="bg-green-50 border border-green-200 rounded p-3">
+                                        <pre class="text-xs text-green-800 whitespace-pre-wrap" x-text="sample.input_preview || 'No preview available'"></pre>
+                                        <div x-show="sample.input_preview && sample.input_preview.length >= 200" 
+                                             class="text-xs text-green-600 mt-1">
+                                            ... (truncated)
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Output Preview -->
+                                <div class="space-y-2">
+                                    <div class="flex items-center space-x-2">
+                                        <i data-lucide="upload" class="w-4 h-4 text-blue-600"></i>
+                                        <span class="text-sm font-medium text-blue-700">Output Preview</span>
+                                    </div>
+                                    <div class="bg-blue-50 border border-blue-200 rounded p-3">
+                                        <pre class="text-xs text-blue-800 whitespace-pre-wrap" x-text="sample.output_preview || 'No preview available'"></pre>
+                                        <div x-show="sample.output_preview && sample.output_preview.length >= 200" 
+                                             class="text-xs text-blue-600 mt-1">
+                                            ... (truncated)
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                    
+                    <div x-show="!stats.input_output_analytics?.recent_samples || stats.input_output_analytics.recent_samples.length === 0" 
+                         class="text-center py-8 text-gray-500">
+                        <i data-lucide="database" class="w-8 h-8 mx-auto text-gray-400 mb-2"></i>
+                        <p>No input/output data available yet</p>
+                        <p class="text-sm">Use commands like 'generate' or 'review' to see AI interactions</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function analytics() {
+    return {
+        loading: true,
+        selectedPeriod: 30,
+        stats: {},
+        charts: {},
+        
+        async init() {
+            await this.loadAnalytics();
+        },
+        
+        async loadAnalytics() {
+            this.loading = true;
+            try {
+                const response = await api.get(`/api/analytics/overview?days=${this.selectedPeriod}`);
+                this.stats = response;
+                
+                // Small delay to let the DOM update
+                await new Promise(resolve => setTimeout(resolve, 100));
+                
+                this.createCharts();
+            } catch (error) {
+                console.error('Failed to load analytics:', error);
+                showNotification('Failed to load analytics', 'error');
+            } finally {
+                this.loading = false;
+            }
+        },
+        
+        createCharts() {
+            this.createUsageChart();
+            this.createCommandChart();
+            this.createProviderChart();
+        },
+        
+        createUsageChart() {
+            const ctx = document.getElementById('usageChart');
+            if (!ctx) return;
+            
+            // Destroy existing chart
+            if (this.charts.usage) {
+                this.charts.usage.destroy();
+            }
+            
+            const dailyData = this.stats.daily_usage || [];
+            
+            this.charts.usage = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: dailyData.map(d => new Date(d.date).toLocaleDateString()),
+                    datasets: [{
+                        label: 'Commands',
+                        data: dailyData.map(d => d.count),
+                        borderColor: '#8B5CF6',
+                        backgroundColor: '#8B5CF6',
+                        tension: 0.4,
+                        fill: false
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: {
+                                color: '#F3F4F6'
+                            }
+                        },
+                        x: {
+                            grid: {
+                                display: false
+                            }
+                        }
+                    }
+                }
+            });
+        },
+        
+        createCommandChart() {
+            const ctx = document.getElementById('commandChart');
+            if (!ctx) return;
+            
+            // Destroy existing chart
+            if (this.charts.command) {
+                this.charts.command.destroy();
+            }
+            
+            const commands = this.stats.most_used_commands || [];
+            const colors = [
+                '#8B5CF6', '#06B6D4', '#10B981', '#F59E0B', 
+                '#EF4444', '#84CC16', '#F97316', '#6366F1'
+            ];
+            
+            this.charts.command = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: commands.map(c => c.command),
+                    datasets: [{
+                        data: commands.map(c => c.count),
+                        backgroundColor: colors.slice(0, commands.length),
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                usePointStyle: true,
+                                padding: 20
+                            }
+                        }
+                    }
+                }
+            });
+        },
+        
+        createProviderChart() {
+            const ctx = document.getElementById('providerChart');
+            if (!ctx) return;
+            
+            // Destroy existing chart
+            if (this.charts.provider) {
+                this.charts.provider.destroy();
+            }
+            
+            const providers = this.stats.provider_distribution || {};
+            const providerColors = {
+                'openai': '#10B981',
+                'claude': '#F59E0B', 
+                'ollama': '#6366F1'
+            };
+            
+            this.charts.provider = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(providers),
+                    datasets: [{
+                        label: 'Usage',
+                        data: Object.values(providers),
+                        backgroundColor: Object.keys(providers).map(p => providerColors[p] || '#6B7280'),
+                        borderRadius: 8,
+                        borderSkipped: false
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: {
+                                color: '#F3F4F6'
+                            }
+                        },
+                        x: {
+                            grid: {
+                                display: false
+                            }
+                        }
+                    }
+                }
+            });
+        },
+        
+        formatTime(seconds) {
+            if (!seconds) return '0s';
+            if (seconds < 1) return Math.round(seconds * 1000) + 'ms';
+            return seconds.toFixed(1) + 's';
+        },
+        
+        formatRelativeTime(timestamp) {
+            const date = new Date(timestamp);
+            const now = new Date();
+            const diff = now - date;
+            
+            if (diff < 60000) return 'just now';
+            if (diff < 3600000) return Math.floor(diff / 60000) + 'm ago';
+            if (diff < 86400000) return Math.floor(diff / 3600000) + 'h ago';
+            return Math.floor(diff / 86400000) + 'd ago';
+        },
+        
+        getTopCommand() {
+            const commands = this.stats.most_used_commands || [];
+            return commands.length > 0 ? commands[0].command : 'N/A';
+        },
+        
+        formatBytes(bytes) {
+            if (!bytes) return '0 B';
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+            return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
+        },
+        
+        async exportData() {
+            try {
+                const response = await fetch(`/api/analytics/export?format=csv&days=${this.selectedPeriod}`);
+                const blob = await response.blob();
+                
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `sayless_usage_${this.selectedPeriod}days.csv`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+                
+                showNotification('Usage data exported successfully!', 'success');
+            } catch (error) {
+                console.error('Export failed:', error);
+                showNotification('Failed to export data', 'error');
+            }
+        }
+    }
+}
+</script>
+{% endblock %} 

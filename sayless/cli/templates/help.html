@@ -1,0 +1,333 @@
+{% extends "base.html" %}
+
+{% block title %}Help - Sayless Setup{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8 max-w-6xl" x-data="helpPage()">
+    <!-- Header -->
+    <div class="text-center mb-12">
+        <h1 class="text-4xl font-bold text-gray-900 mb-4">Command Reference</h1>
+        <p class="text-xl text-gray-600 max-w-3xl mx-auto">
+            Master your AI-powered Git workflow with comprehensive command documentation and examples.
+        </p>
+    </div>
+
+    <!-- Search and Filter -->
+    <div class="mb-8">
+        <div class="card-solid rounded-2xl p-6">
+            <div class="flex flex-col md:flex-row md:items-center md:space-x-4 space-y-4 md:space-y-0">
+                <!-- Search -->
+                <div class="flex-1">
+                    <div class="relative">
+                        <svg class="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                        </svg>
+                        <input type="text" x-model="searchQuery" 
+                               class="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-sayless-500 focus:border-transparent transition-colors"
+                               placeholder="Search commands...">
+                    </div>
+                </div>
+                
+                <!-- Category Filter -->
+                <div class="flex space-x-2">
+                    <button @click="selectedCategory = 'all'" 
+                            :class="selectedCategory === 'all' ? 'bg-sayless-500 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'"
+                            class="px-4 py-2 rounded-lg border transition-colors">
+                        All
+                    </button>
+                    <template x-for="category in categories" :key="category">
+                        <button @click="selectedCategory = category" 
+                                :class="selectedCategory === category ? 'bg-sayless-500 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'"
+                                class="px-4 py-2 rounded-lg border transition-colors"
+                                x-text="category"></button>
+                    </template>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Start Guide -->
+    <div class="mb-12">
+        <h2 class="text-2xl font-bold text-gray-900 mb-6">🚀 Quick Start</h2>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="glass-effect rounded-2xl p-6">
+                <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center mb-4">
+                    <span class="text-white font-bold text-xl">1</span>
+                </div>
+                <h3 class="font-semibold text-gray-900 mb-2">Configure AI Provider</h3>
+                <p class="text-sm text-gray-600 mb-3">Set up OpenAI or Ollama for AI-powered features.</p>
+                <code class="text-xs bg-gray-100 px-2 py-1 rounded">sl config --openai-key YOUR_KEY</code>
+            </div>
+
+            <div class="glass-effect rounded-2xl p-6">
+                <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center mb-4">
+                    <span class="text-white font-bold text-xl">2</span>
+                </div>
+                <h3 class="font-semibold text-gray-900 mb-2">Generate Your First Commit</h3>
+                <p class="text-sm text-gray-600 mb-3">Create intelligent commit messages automatically.</p>
+                <code class="text-xs bg-gray-100 px-2 py-1 rounded">sl g -a</code>
+            </div>
+
+            <div class="glass-effect rounded-2xl p-6">
+                <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-violet-600 flex items-center justify-center mb-4">
+                    <span class="text-white font-bold text-xl">3</span>
+                </div>
+                <h3 class="font-semibold text-gray-900 mb-2">Create Smart PRs</h3>
+                <p class="text-sm text-gray-600 mb-3">Generate pull requests with AI-powered content.</p>
+                <code class="text-xs bg-gray-100 px-2 py-1 rounded">sl pr create</code>
+            </div>
+        </div>
+    </div>
+
+    <!-- Command List -->
+    <div class="space-y-6">
+        <template x-for="command in filteredCommands" :key="command.name">
+            <div class="glass-effect rounded-2xl overflow-hidden">
+                <div class="p-6">
+                    <!-- Command Header -->
+                    <div class="flex items-start justify-between mb-4">
+                        <div class="flex-1">
+                            <div class="flex items-center space-x-3 mb-2">
+                                <h3 class="text-xl font-semibold text-gray-900" x-text="command.name"></h3>
+                                <span x-show="command.alias" 
+                                      class="px-2 py-1 bg-sayless-100 text-sayless-700 rounded text-sm font-medium"
+                                      x-text="'Alias: ' + command.alias"></span>
+                                <span class="px-2 py-1 bg-gray-100 text-gray-600 rounded text-sm"
+                                      x-text="command.category"></span>
+                            </div>
+                            <p class="text-gray-600" x-text="command.description"></p>
+                        </div>
+                        
+                        <button @click="command.expanded = !command.expanded" 
+                                class="p-2 text-gray-400 hover:text-gray-600 transition-colors">
+                            <svg class="w-5 h-5 transform transition-transform" 
+                                 :class="command.expanded ? 'rotate-180' : ''" 
+                                 fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                            </svg>
+                        </button>
+                    </div>
+
+                    <!-- Usage -->
+                    <div class="mb-4">
+                        <h4 class="text-sm font-medium text-gray-700 mb-2">Usage</h4>
+                        <div class="bg-gray-900 text-gray-100 p-4 rounded-lg">
+                            <code x-text="command.usage"></code>
+                        </div>
+                    </div>
+
+                    <!-- Expanded Content -->
+                    <div x-show="command.expanded" x-collapse>
+                        <!-- Examples -->
+                        <div class="mb-6">
+                            <h4 class="text-sm font-medium text-gray-700 mb-3">Examples</h4>
+                            <div class="space-y-3">
+                                <template x-for="example in command.examples" :key="example">
+                                    <div class="bg-gray-50 border rounded-lg p-4">
+                                        <div class="flex items-center justify-between mb-2">
+                                            <code class="text-sm font-mono text-gray-800" x-text="example"></code>
+                                            <button @click="copyToClipboard(example)" 
+                                                    class="p-1 text-gray-400 hover:text-gray-600 transition-colors">
+                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                                                </svg>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+
+                        <!-- Options -->
+                        <div x-show="command.options && command.options.length > 0">
+                            <h4 class="text-sm font-medium text-gray-700 mb-3">Options</h4>
+                            <div class="space-y-2">
+                                <template x-for="option in command.options" :key="option.flag">
+                                    <div class="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg">
+                                        <code class="text-sm font-mono text-sayless-600 whitespace-nowrap" x-text="option.flag"></code>
+                                        <p class="text-sm text-gray-600" x-text="option.description"></p>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </template>
+    </div>
+
+    <!-- No Results -->
+    <div x-show="filteredCommands.length === 0" class="text-center py-12">
+        <svg class="w-16 h-16 mx-auto text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.172 16.172a4 4 0 015.656 0M9 12h6m-6-4h6m2 5.291A7.962 7.962 0 0112 20.5a7.962 7.962 0 01-5.657-2.343m0 0L8 16m0 0l1.172-1.172a4 4 0 015.656 0L16 16m-2.343-2.343a4 4 0 000-5.656m0 0L12 6.5l-1.657 1.657a4 4 0 000 5.656"></path>
+        </svg>
+        <h3 class="text-lg font-medium text-gray-900 mb-2">No commands found</h3>
+        <p class="text-gray-600">Try adjusting your search or filters</p>
+    </div>
+
+    <!-- Additional Resources -->
+    <div class="mt-16">
+        <h2 class="text-2xl font-bold text-gray-900 mb-6">📚 Additional Resources</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div class="glass-effect rounded-2xl p-6 hover:shadow-lg transition-all duration-300 group cursor-pointer">
+                <div class="flex items-center space-x-3 mb-4">
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>
+                        </svg>
+                    </div>
+                    <h3 class="font-semibold text-gray-900">Getting Started Guide</h3>
+                </div>
+                <p class="text-gray-600 text-sm">Complete setup and configuration guide for new users.</p>
+            </div>
+
+            <div class="glass-effect rounded-2xl p-6 hover:shadow-lg transition-all duration-300 group cursor-pointer">
+                <div class="flex items-center space-x-3 mb-4">
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                        </svg>
+                    </div>
+                    <h3 class="font-semibold text-gray-900">Best Practices</h3>
+                </div>
+                <p class="text-gray-600 text-sm">Tips and tricks for maximizing your productivity with Sayless.</p>
+            </div>
+
+            <div class="glass-effect rounded-2xl p-6 hover:shadow-lg transition-all duration-300 group cursor-pointer">
+                <div class="flex items-center space-x-3 mb-4">
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-violet-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                    </div>
+                    <h3 class="font-semibold text-gray-900">Troubleshooting</h3>
+                </div>
+                <p class="text-gray-600 text-sm">Common issues and their solutions.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Workflow Examples -->
+    <div class="mt-16">
+        <h2 class="text-2xl font-bold text-gray-900 mb-6">🔄 Common Workflows</h2>
+        <div class="space-y-6">
+            <!-- Feature Development Workflow -->
+            <div class="glass-effect rounded-2xl p-8">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">Feature Development Workflow</h3>
+                <div class="space-y-4">
+                    <div class="flex items-start space-x-4">
+                        <div class="w-8 h-8 rounded-full bg-sayless-500 text-white flex items-center justify-center text-sm font-medium">1</div>
+                        <div>
+                            <code class="text-sm bg-gray-100 px-2 py-1 rounded">sl branch "add user authentication"</code>
+                            <p class="text-sm text-gray-600 mt-1">Create a feature branch with AI-generated name</p>
+                        </div>
+                    </div>
+                    <div class="flex items-start space-x-4">
+                        <div class="w-8 h-8 rounded-full bg-sayless-500 text-white flex items-center justify-center text-sm font-medium">2</div>
+                        <div>
+                            <code class="text-sm bg-gray-100 px-2 py-1 rounded">sl g -a</code>
+                            <p class="text-sm text-gray-600 mt-1">Make changes and commit with AI-generated message</p>
+                        </div>
+                    </div>
+                    <div class="flex items-start space-x-4">
+                        <div class="w-8 h-8 rounded-full bg-sayless-500 text-white flex items-center justify-center text-sm font-medium">3</div>
+                        <div>
+                            <code class="text-sm bg-gray-100 px-2 py-1 rounded">sl deps analyze --auto-fix</code>
+                            <p class="text-sm text-gray-600 mt-1">Check and auto-fix missing dependencies</p>
+                        </div>
+                    </div>
+                    <div class="flex items-start space-x-4">
+                        <div class="w-8 h-8 rounded-full bg-sayless-500 text-white flex items-center justify-center text-sm font-medium">4</div>
+                        <div>
+                            <code class="text-sm bg-gray-100 px-2 py-1 rounded">sl pr create</code>
+                            <p class="text-sm text-gray-600 mt-1">Create pull request with AI-generated content</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Code Review Workflow -->
+            <div class="glass-effect rounded-2xl p-8">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">Code Review Workflow</h3>
+                <div class="space-y-4">
+                    <div class="flex items-start space-x-4">
+                        <div class="w-8 h-8 rounded-full bg-purple-500 text-white flex items-center justify-center text-sm font-medium">1</div>
+                        <div>
+                            <code class="text-sm bg-gray-100 px-2 py-1 rounded">sl review-enhanced --pr 123 --type detailed</code>
+                            <p class="text-sm text-gray-600 mt-1">Conduct detailed AI-powered PR review</p>
+                        </div>
+                    </div>
+                    <div class="flex items-start space-x-4">
+                        <div class="w-8 h-8 rounded-full bg-purple-500 text-white flex items-center justify-center text-sm font-medium">2</div>
+                        <div>
+                            <code class="text-sm bg-gray-100 px-2 py-1 rounded">sl review-enhanced --pr 123 --type security --auto-post</code>
+                            <p class="text-sm text-gray-600 mt-1">Security review and auto-post to GitHub</p>
+                        </div>
+                    </div>
+                    <div class="flex items-start space-x-4">
+                        <div class="w-8 h-8 rounded-full bg-purple-500 text-white flex items-center justify-center text-sm font-medium">3</div>
+                        <div>
+                            <code class="text-sm bg-gray-100 px-2 py-1 rounded">sl bulk-review --type quick --max 5</code>
+                            <p class="text-sm text-gray-600 mt-1">Review multiple PRs at once</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function helpPage() {
+    return {
+        searchQuery: '',
+        selectedCategory: 'all',
+        commands: {{ commands|tojson }},
+        
+        get categories() {
+            return [...new Set(this.commands.map(cmd => cmd.category))];
+        },
+        
+        get filteredCommands() {
+            let filtered = this.commands;
+            
+            // Filter by category
+            if (this.selectedCategory !== 'all') {
+                filtered = filtered.filter(cmd => cmd.category === this.selectedCategory);
+            }
+            
+            // Filter by search query
+            if (this.searchQuery) {
+                const query = this.searchQuery.toLowerCase();
+                filtered = filtered.filter(cmd => 
+                    cmd.name.toLowerCase().includes(query) ||
+                    cmd.description.toLowerCase().includes(query) ||
+                    (cmd.alias && cmd.alias.toLowerCase().includes(query))
+                );
+            }
+            
+            // Add expanded property for UI state
+            return filtered.map(cmd => ({ ...cmd, expanded: false }));
+        },
+        
+        async copyToClipboard(text) {
+            try {
+                await navigator.clipboard.writeText(text);
+                showNotification('Copied to clipboard!', 'success');
+            } catch (error) {
+                // Fallback for older browsers
+                const textArea = document.createElement('textarea');
+                textArea.value = text;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                showNotification('Copied to clipboard!', 'success');
+            }
+        }
+    }
+}
+</script>
+{% endblock %} 
