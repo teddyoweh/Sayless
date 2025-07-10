@@ -21,7 +21,7 @@ from dateutil.relativedelta import relativedelta
 import asyncio
 from .embeddings import CommitEmbeddings
 from .git_ops import create_branch, list_branches, run_git_command
-from .github_ops import create_pr, list_prs
+from .github_ops import create_pr, list_prs, enhanced_review_pr, bulk_review_prs, compare_review_types, show_review_templates, review_current_branch_enhanced
 from .dependency_manager import DependencyManager
 
 app = typer.Typer(help="AI Git Copilot / Autopilot")
@@ -1554,6 +1554,76 @@ def update_dependencies(dep_manager: DependencyManager, ecosystem: str = None, a
                 title="Error",
                 border_style="red"
             ))
+
+@app.command("review-enhanced")
+def review_enhanced_command(
+    pr_number: int = typer.Option(None, "--pr", help="PR number to review"),
+    review_type: str = typer.Option("quick", "--type", "-t", help="Review type: quick, detailed, security, performance, dependencies"),
+    auto_post: bool = typer.Option(False, "--auto-post", help="Automatically post review to GitHub"),
+    include_checklist: bool = typer.Option(True, "--checklist/--no-checklist", help="Include review checklist"),
+    current_branch: bool = typer.Option(False, "--current", "-c", help="Review current branch"),
+):
+    """Enhanced PR review with structured review types"""
+    if current_branch:
+        review_current_branch_enhanced(review_type, auto_post)
+    elif pr_number:
+        enhanced_review_pr(pr_number, review_type, auto_post, include_checklist)
+    else:
+        console.print(Panel(
+            "[red]Please specify either --pr <number> or --current[/red]\n\n"
+            "[blue]Examples:[/blue]\n"
+            "• Review PR #123: [cyan]sayless review-enhanced --pr 123[/cyan]\n"
+            "• Review current branch: [cyan]sayless review-enhanced --current[/cyan]\n"
+            "• Security review of PR: [cyan]sayless review-enhanced --pr 123 --type security[/cyan]",
+            title="Usage",
+            border_style="yellow"
+        ))
+
+@app.command("bulk-review")
+def bulk_review_command(
+    review_type: str = typer.Option("quick", "--type", "-t", help="Review type: quick, detailed, security, performance, dependencies"),
+    max_prs: int = typer.Option(5, "--max", "-m", help="Maximum number of PRs to review"),
+    auto_post: bool = typer.Option(False, "--auto-post", help="Automatically post reviews to GitHub"),
+):
+    """Review multiple open PRs at once"""
+    bulk_review_prs(review_type, max_prs, auto_post)
+
+@app.command("compare-reviews")
+def compare_reviews_command(
+    pr_number: int = typer.Argument(..., help="PR number to compare review types for"),
+):
+    """Compare multiple review types for the same PR"""
+    compare_review_types(pr_number)
+
+@app.command("review-templates")
+def review_templates_command():
+    """Show available review templates and their details"""
+    show_review_templates()
+
+@app.command("review")
+def review_command(
+    pr_number: int = typer.Option(None, "--pr", help="PR number to review"),
+    auto_comment: bool = typer.Option(False, "--auto-comment", help="Automatically post review to GitHub"),
+    enhanced: bool = typer.Option(False, "--enhanced", help="Use enhanced structured review"),
+    review_type: str = typer.Option("quick", "--type", "-t", help="Review type for enhanced review"),
+):
+    """Review changes in current branch or specific PR"""
+    if enhanced:
+        if pr_number:
+            enhanced_review_pr(pr_number, review_type, auto_comment)
+        else:
+            review_current_branch_enhanced(review_type, auto_comment)
+    else:
+        # Use original review functionality
+        from .github_ops import review_current_branch, review_pr, review_with_auto_comment
+        
+        if pr_number:
+            review_pr(pr_number, auto_comment)
+        else:
+            if auto_comment:
+                review_with_auto_comment()
+            else:
+                review_current_branch(auto_comment)
 
 if __name__ == "__main__":
     app()
