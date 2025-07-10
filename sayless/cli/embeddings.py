@@ -13,7 +13,7 @@ import aiohttp
 import requests
 from openai import AsyncOpenAI, OpenAI
 from datetime import datetime
-from .ai_providers import OpenAIProvider
+from .ai_providers import OpenAIProvider, AIProvider
 
 console = Console()
 settings = Config()
@@ -121,7 +121,23 @@ class CommitEmbeddings:
 
     async def add_commit(self, commit_hash: str, commit_message: str, commit_diff: str, 
                         date: str, tags: List[str] = None):
-        """Add a commit to the index"""
+        """Add a commit to the index with token limit handling"""
+        # Truncate diff if too large for embeddings
+        # Conservative limit for embeddings (roughly 6000 tokens * 4 chars)
+        max_chars = 20000
+        
+        # Truncate diff if it's too large
+        if len(commit_diff) > max_chars:
+            lines = commit_diff.split('\n')
+            if len(lines) > 200:
+                # For very large diffs, take first 100 lines + summary
+                truncated_lines = lines[:100]
+                file_count = len([line for line in lines if line.startswith('diff --git')])
+                commit_diff = '\n'.join(truncated_lines) + f"\n\n... and {len(lines) - 100} more lines across {file_count} files"
+            else:
+                # For moderately large diffs, just truncate to character limit
+                commit_diff = commit_diff[:max_chars] + "\n\n... (truncated for embedding)"
+        
         # Combine commit information for embedding
         commit_text = f"Message: {commit_message}\n\nChanges:\n{commit_diff}"
         
@@ -187,8 +203,26 @@ class CommitEmbeddings:
             raise
 
     def get_commit_tags(self, commit_message: str, diff: str) -> List[str]:
-        """Generate tags for a commit using LLM"""
+        """Generate tags for a commit using LLM with token limit handling"""
         try:
+            # Truncate diff if too large to prevent token limit errors
+            # Simple estimation: roughly 4 characters per token
+            max_chars = 12000  # Conservative limit for gpt-4 (3000 tokens * 4 chars)
+            
+            # Truncate diff if it's too large
+            if len(diff) > max_chars:
+                # Take first portion of diff plus some stats
+                lines = diff.split('\n')
+                if len(lines) > 100:
+                    # For very large diffs, take first 50 lines + file summary
+                    truncated_lines = lines[:50]
+                    file_count = len([line for line in lines if line.startswith('diff --git')])
+                    truncated_diff = '\n'.join(truncated_lines) + f"\n\n... and {len(lines) - 50} more lines across {file_count} files"
+                else:
+                    # For moderately large diffs, just truncate to character limit
+                    truncated_diff = diff[:max_chars] + "\n\n... (truncated)"
+                diff = truncated_diff
+            
             provider = settings.get_provider()
             if provider == 'openai':
                 response = self.sync_client.chat.completions.create(

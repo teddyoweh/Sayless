@@ -368,13 +368,28 @@ def get_commit_details_for_hash(commit_hash: str) -> Tuple[str, str, str]:
         raise Exception(f"Failed to get commit details: {error_msg}")
 
 async def index_commit(commit_hash: str, progress=None):
-    """Index a single commit"""
+    """Index a single commit with robust error handling"""
     try:
         message, diff, date = get_commit_details_for_hash(commit_hash)
         embeddings = CommitEmbeddings()
-        tags = embeddings.get_commit_tags(message, diff)
-        await embeddings.add_commit(commit_hash, message, diff, date, tags)
-        return True
+        
+        # Generate tags with error handling
+        try:
+            tags = embeddings.get_commit_tags(message, diff)
+        except Exception as tag_error:
+            if progress:
+                console.print(f"[yellow]Failed to generate tags for commit {commit_hash}: {str(tag_error)}[/yellow]")
+            tags = []  # Continue with empty tags
+        
+        # Add commit to index with error handling
+        try:
+            await embeddings.add_commit(commit_hash, message, diff, date, tags)
+            return True
+        except Exception as embed_error:
+            if progress:
+                console.print(f"[yellow]Failed to add commit {commit_hash} to index: {str(embed_error)}[/yellow]")
+            return False
+            
     except Exception as e:
         if progress:
             console.print(f"[yellow]Failed to index commit {commit_hash}: {str(e)}[/yellow]")
@@ -658,16 +673,16 @@ def _generate_command(preview: bool, auto_add: bool):
                     # Index the commit
                     task_index = commit_progress.add_task("Indexing commit for search...", total=None)
                     try:
-                        success = asyncio.run(index_commit(commit_hash))
+                        success = asyncio.run(index_commit(commit_hash, progress=commit_progress))
                         if success:
                             commit_progress.update(task_index, completed=True)
                             console.print("[green]✓[/green] Commit indexed for search")
                         else:
                             commit_progress.update(task_index, visible=False)
-                            console.print("\n[yellow]Note: Failed to index commit[/yellow]")
+                            console.print("\n[yellow]Note: Failed to index commit (large diff or API limits)[/yellow]")
                     except Exception as e:
                         commit_progress.update(task_index, visible=False)
-                        console.print(f"\n[yellow]Note: Failed to index commit: {str(e)}[/yellow]")
+                        console.print(f"\n[yellow]Note: Failed to index commit (this won't affect the commit): {str(e)[:100]}[/yellow]")
                     
                 except subprocess.CalledProcessError as e:
                     commit_progress.update(task_commit, visible=False)
