@@ -5,44 +5,85 @@
 {% block head %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/date-fns@2.29.0/index.min.js"></script>
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+    
+    body {
+        font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        font-feature-settings: 'cv11', 'ss01';
+    }
+    
+    /* Custom scrollbar */
+    ::-webkit-scrollbar {
+        width: 6px;
+    }
+    
+    ::-webkit-scrollbar-track {
+        background: transparent;
+    }
+    
+    ::-webkit-scrollbar-thumb {
+        background: hsl(var(--border));
+        border-radius: 3px;
+    }
+    
+    ::-webkit-scrollbar-thumb:hover {
+        background: hsl(var(--muted-foreground));
+    }
+</style>
 {% endblock %}
 
 {% block content %}
 <div class="container mx-auto px-4 py-8 max-w-7xl" x-data="analytics()">
     <!-- Header -->
     <div class="mb-8">
-        <div class="flex items-center justify-between">
-            <div>
-                <h1 class="text-3xl font-bold text-gray-900 mb-2">Analytics Dashboard</h1>
-                <p class="text-gray-600">Track your Sayless usage patterns and insights</p>
-            </div>
-            <div class="flex items-center space-x-4">
-                <!-- Time Period Selector -->
-                <select x-model="selectedPeriod" @change="loadAnalytics()" 
-                        class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-sayless-500 focus:border-transparent">
-                    <option value="7">Last 7 days</option>
-                    <option value="30" selected>Last 30 days</option>
-                    <option value="90">Last 90 days</option>
-                </select>
+        <div class="rounded-lg border border-border bg-card p-6">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-4">
+                    <div class="h-12 w-12 rounded-md bg-primary/10 flex items-center justify-center">
+                        <i data-lucide="bar-chart-3" class="h-6 w-6 text-primary"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-2xl font-semibold tracking-tight">Analytics Dashboard</h1>
+                        <p class="text-sm text-muted-foreground">Deep insights into your Sayless AI workflow patterns</p>
+                    </div>
+                </div>
                 
-                <!-- Export Button -->
-                <button @click="exportData()" 
-                        class="flex items-center space-x-2 px-4 py-2 bg-sayless-500 hover:bg-sayless-600 text-white rounded-lg transition-colors">
-                    <i data-lucide="download" class="w-4 h-4"></i>
-                    <span>Export</span>
-                </button>
+                <div class="flex items-center space-x-3">
+                    <!-- Time Period Selector -->
+                    <div class="relative">
+                        <select x-model="selectedPeriod" @change="loadAnalytics()" 
+                                class="appearance-none bg-background border border-border rounded-md px-3 py-2 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors">
+                            <option value="7">Last 7 days</option>
+                            <option value="30" selected>Last 30 days</option>
+                            <option value="90">Last 90 days</option>
+                        </select>
+                        <div class="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none">
+                            <i data-lucide="chevron-down" class="w-4 h-4 text-muted-foreground"></i>
+                        </div>
+                    </div>
+                    
+                    <!-- Export Button -->
+                    <button @click="exportData()" 
+                            class="inline-flex items-center space-x-2 bg-primary text-primary-foreground px-3 py-2 rounded-md text-sm font-medium hover:bg-primary/90 transition-colors">
+                        <i data-lucide="download" class="w-4 h-4"></i>
+                        <span>Export Data</span>
+                    </button>
+                </div>
             </div>
         </div>
     </div>
 
     <!-- Loading State -->
-    <div x-show="loading" class="flex items-center justify-center py-16">
-        <div class="flex items-center space-x-3">
-            <svg class="w-8 h-8 animate-spin text-sayless-500" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            <span class="text-lg text-gray-600">Loading analytics...</span>
+    <div x-show="loading" class="flex items-center justify-center py-24">
+        <div class="rounded-lg border border-border bg-card p-8">
+            <div class="flex items-center space-x-4">
+                <div class="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                <div>
+                    <h3 class="text-lg font-semibold">Loading Analytics</h3>
+                    <p class="text-sm text-muted-foreground">Gathering your usage insights...</p>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -51,116 +92,141 @@
         <!-- Key Metrics -->
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             <!-- Total Commands -->
-            <div class="rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 p-6 text-white">
+            <div class="rounded-lg border border-border bg-card p-6 transition-colors hover:bg-accent/5">
                 <div class="flex items-center justify-between">
                     <div>
-                        <p class="text-blue-100 text-sm font-medium">Total Commands</p>
-                        <p class="text-3xl font-bold" x-text="stats.total_commands || 0"></p>
+                        <p class="text-sm text-muted-foreground">Total Commands</p>
+                        <p class="text-3xl font-semibold" x-text="stats.total_commands || 0"></p>
+                        <p class="text-xs text-muted-foreground mt-1">Lifetime executions</p>
                     </div>
-                    <div class="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
-                        <i data-lucide="terminal" class="w-6 h-6"></i>
+                    <div class="h-10 w-10 rounded-md bg-blue-100 flex items-center justify-center">
+                        <i data-lucide="terminal" class="h-5 w-5 text-blue-600"></i>
                     </div>
                 </div>
             </div>
 
             <!-- Success Rate -->
-            <div class="rounded-xl bg-gradient-to-br from-green-500 to-green-600 p-6 text-white">
+            <div class="rounded-lg border border-border bg-card p-6 transition-colors hover:bg-accent/5">
                 <div class="flex items-center justify-between">
                     <div>
-                        <p class="text-green-100 text-sm font-medium">Success Rate</p>
-                        <p class="text-3xl font-bold" x-text="Math.round((stats.success_rate || 0) * 100) + '%'"></p>
+                        <p class="text-sm text-muted-foreground">Success Rate</p>
+                        <p class="text-3xl font-semibold" x-text="Math.round((stats.success_rate || 0) * 100) + '%'"></p>
+                        <p class="text-xs text-muted-foreground mt-1">Command reliability</p>
                     </div>
-                    <div class="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
-                        <i data-lucide="check-circle" class="w-6 h-6"></i>
+                    <div class="h-10 w-10 rounded-md bg-green-100 flex items-center justify-center">
+                        <i data-lucide="check-circle" class="h-5 w-5 text-green-600"></i>
                     </div>
                 </div>
             </div>
 
             <!-- Avg Execution Time -->
-            <div class="rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 p-6 text-white">
+            <div class="rounded-lg border border-border bg-card p-6 transition-colors hover:bg-accent/5">
                 <div class="flex items-center justify-between">
                     <div>
-                        <p class="text-purple-100 text-sm font-medium">Avg Execution</p>
-                        <p class="text-3xl font-bold" x-text="formatTime(stats.avg_execution_time || 0)"></p>
+                        <p class="text-sm text-muted-foreground">Avg Execution</p>
+                        <p class="text-3xl font-semibold" x-text="formatTime(stats.avg_execution_time || 0)"></p>
+                        <p class="text-xs text-muted-foreground mt-1">Performance metric</p>
                     </div>
-                    <div class="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
-                        <i data-lucide="clock" class="w-6 h-6"></i>
+                    <div class="h-10 w-10 rounded-md bg-purple-100 flex items-center justify-center">
+                        <i data-lucide="clock" class="h-5 w-5 text-purple-600"></i>
                     </div>
                 </div>
             </div>
 
             <!-- Most Used Command -->
-            <div class="rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 p-6 text-white">
+            <div class="rounded-lg border border-border bg-card p-6 transition-colors hover:bg-accent/5">
                 <div class="flex items-center justify-between">
                     <div>
-                        <p class="text-orange-100 text-sm font-medium">Top Command</p>
-                        <p class="text-2xl font-bold" x-text="getTopCommand()"></p>
+                        <p class="text-sm text-muted-foreground">Top Command</p>
+                        <p class="text-2xl font-semibold font-mono" x-text="getTopCommand()"></p>
+                        <p class="text-xs text-muted-foreground mt-1">Most popular</p>
                     </div>
-                    <div class="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
-                        <i data-lucide="trending-up" class="w-6 h-6"></i>
+                    <div class="h-10 w-10 rounded-md bg-amber-100 flex items-center justify-center">
+                        <i data-lucide="trending-up" class="h-5 w-5 text-amber-600"></i>
                     </div>
                 </div>
             </div>
         </div>
 
         <!-- Charts Row -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <!-- Usage Over Time -->
-            <div class="card-solid rounded-2xl p-6">
+            <div class="rounded-lg border border-border bg-card p-6">
                 <div class="flex items-center justify-between mb-6">
-                    <h3 class="text-lg font-semibold text-gray-900">Usage Over Time</h3>
-                    <div class="flex items-center space-x-2 text-sm text-gray-500">
-                        <div class="w-3 h-3 bg-sayless-500 rounded"></div>
+                    <div>
+                        <h3 class="text-lg font-semibold">Usage Over Time</h3>
+                        <p class="text-sm text-muted-foreground">Command execution trends</p>
+                    </div>
+                    <div class="flex items-center space-x-2 text-sm text-muted-foreground">
+                        <div class="w-2 h-2 bg-blue-500 rounded-full"></div>
                         <span>Commands</span>
                     </div>
                 </div>
-                <div class="relative h-64">
+                <div class="h-64 bg-muted/20 rounded-md p-4">
                     <canvas id="usageChart"></canvas>
                 </div>
             </div>
 
             <!-- Command Distribution -->
-            <div class="card-solid rounded-2xl p-6">
+            <div class="rounded-lg border border-border bg-card p-6">
                 <div class="flex items-center justify-between mb-6">
-                    <h3 class="text-lg font-semibold text-gray-900">Most Used Commands</h3>
-                    <span class="text-sm text-gray-500">Last <span x-text="selectedPeriod"></span> days</span>
+                    <div>
+                        <h3 class="text-lg font-semibold">Most Used Commands</h3>
+                        <p class="text-sm text-muted-foreground">Distribution analysis</p>
+                    </div>
+                    <div class="flex items-center space-x-2 text-sm text-muted-foreground">
+                        <div class="w-2 h-2 bg-primary rounded-full"></div>
+                        <span>Last <span x-text="selectedPeriod"></span> days</span>
+                    </div>
                 </div>
-                <div class="relative h-64">
+                <div class="h-64 bg-muted/20 rounded-md p-4">
                     <canvas id="commandChart"></canvas>
                 </div>
             </div>
         </div>
 
         <!-- Provider Distribution & Performance -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <!-- Provider Usage -->
-            <div class="card-solid rounded-2xl p-6">
+            <div class="rounded-lg border border-border bg-card p-6">
                 <div class="flex items-center justify-between mb-6">
-                    <h3 class="text-lg font-semibold text-gray-900">AI Provider Distribution</h3>
-                    <span class="text-sm text-gray-500">Usage by provider</span>
+                    <div>
+                        <h3 class="text-lg font-semibold">AI Provider Distribution</h3>
+                        <p class="text-sm text-muted-foreground">Usage breakdown by provider</p>
+                    </div>
+                    <div class="flex items-center space-x-2 text-sm text-muted-foreground">
+                        <div class="w-2 h-2 bg-primary rounded-full"></div>
+                        <span>Usage stats</span>
+                    </div>
                 </div>
-                <div class="relative h-64">
+                <div class="h-64 bg-muted/20 rounded-md p-4">
                     <canvas id="providerChart"></canvas>
                 </div>
             </div>
 
             <!-- Performance Metrics -->
-            <div class="card-solid rounded-2xl p-6">
+            <div class="rounded-lg border border-border bg-card p-6">
                 <div class="flex items-center justify-between mb-6">
-                    <h3 class="text-lg font-semibold text-gray-900">Performance Metrics</h3>
-                    <span class="text-sm text-gray-500">Execution times</span>
+                    <div>
+                        <h3 class="text-lg font-semibold">Performance Metrics</h3>
+                        <p class="text-sm text-muted-foreground">Execution time analysis</p>
+                    </div>
+                    <div class="flex items-center space-x-2 text-sm text-muted-foreground">
+                        <div class="w-2 h-2 bg-primary rounded-full"></div>
+                        <span>Response times</span>
+                    </div>
                 </div>
-                <div class="space-y-4">
+                <div class="space-y-4 bg-muted/20 rounded-md p-4">
                     <template x-for="(perf, command) in Object.entries(stats.performance_metrics || {}).slice(0, 5)" :key="command">
-                        <div class="flex items-center justify-between">
-                            <div class="flex items-center space-x-3">
-                                <code class="bg-gray-100 px-2 py-1 rounded text-xs font-mono" x-text="perf[0]"></code>
-                                <div class="w-32 bg-gray-200 rounded-full h-2">
-                                    <div class="bg-sayless-500 h-2 rounded-full" 
-                                         :style="`width: ${Math.min((perf[1].avg_time / 5) * 100, 100)}%`"></div>
-                                </div>
+                        <div class="group transition-colors hover:bg-background rounded-lg p-3">
+                            <div class="flex items-center justify-between mb-2">
+                                <code class="bg-muted text-foreground px-2 py-1 rounded text-xs font-mono" x-text="perf[0]"></code>
+                                <span class="text-sm font-medium text-foreground" x-text="formatTime(perf[1].avg_time)"></span>
                             </div>
-                            <span class="text-sm text-gray-600" x-text="formatTime(perf[1].avg_time)"></span>
+                            <div class="w-full bg-muted rounded-full h-2">
+                                <div class="bg-primary h-2 rounded-full transition-all duration-300" 
+                                     :style="`width: ${Math.min((perf[1].avg_time / 5) * 100, 100)}%`"></div>
+                            </div>
                         </div>
                     </template>
                 </div>
@@ -168,44 +234,44 @@
         </div>
 
         <!-- Recent Activity & Error Summary -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <!-- Recent Activity -->
-            <div class="card-solid rounded-2xl p-6">
+            <div class="rounded-lg border border-border bg-card p-6">
                 <div class="flex items-center justify-between mb-6">
-                    <h3 class="text-lg font-semibold text-gray-900">Recent Activity</h3>
-                    <span class="text-sm text-gray-500">Latest commands</span>
+                    <h3 class="text-lg font-semibold">Recent Activity</h3>
+                    <span class="text-sm text-muted-foreground">Latest commands</span>
                 </div>
                 <div class="space-y-3 max-h-64 overflow-y-auto">
                     <template x-for="activity in stats.recent_activity || []" :key="activity.timestamp">
-                        <div class="flex items-center justify-between p-3 rounded-lg border border-gray-200">
+                        <div class="flex items-center justify-between p-3 rounded-md border border-border">
                             <div class="flex items-center space-x-3">
                                 <div class="w-2 h-2 rounded-full" 
                                      :class="activity.success ? 'bg-green-500' : 'bg-red-500'"></div>
                                 <code class="text-sm font-mono" x-text="activity.command"></code>
-                                <span class="text-xs text-gray-500" x-text="activity.provider"></span>
+                                <span class="text-xs text-muted-foreground" x-text="activity.provider"></span>
                             </div>
                             <div class="text-right">
-                                <div class="text-xs text-gray-500" x-text="formatTime(activity.execution_time)"></div>
-                                <div class="text-xs text-gray-400" x-text="formatRelativeTime(activity.timestamp)"></div>
+                                <div class="text-xs text-muted-foreground" x-text="formatTime(activity.execution_time)"></div>
+                                <div class="text-xs text-muted-foreground" x-text="formatRelativeTime(activity.timestamp)"></div>
                             </div>
                         </div>
                     </template>
                     <div x-show="!stats.recent_activity || stats.recent_activity.length === 0" 
-                         class="text-center py-8 text-gray-500">
+                         class="text-center py-8 text-muted-foreground">
                         No recent activity
                     </div>
                 </div>
             </div>
 
             <!-- Error Summary -->
-            <div class="card-solid rounded-2xl p-6">
+            <div class="rounded-lg border border-border bg-card p-6">
                 <div class="flex items-center justify-between mb-6">
-                    <h3 class="text-lg font-semibold text-gray-900">Error Summary</h3>
-                    <span class="text-sm text-gray-500">Common issues</span>
+                    <h3 class="text-lg font-semibold">Error Summary</h3>
+                    <span class="text-sm text-muted-foreground">Common issues</span>
                 </div>
                 <div class="space-y-3">
                     <template x-for="error in stats.error_summary || []" :key="error.command + error.error">
-                        <div class="p-4 rounded-lg bg-red-50 border border-red-200">
+                        <div class="p-4 rounded-md bg-red-50 border border-red-200">
                             <div class="flex items-start justify-between">
                                 <div class="flex-1">
                                     <div class="flex items-center space-x-2 mb-1">
@@ -218,7 +284,7 @@
                         </div>
                     </template>
                     <div x-show="!stats.error_summary || stats.error_summary.length === 0" 
-                         class="text-center py-8 text-gray-500">
+                         class="text-center py-8 text-muted-foreground">
                         <i data-lucide="check-circle" class="w-8 h-8 mx-auto text-green-500 mb-2"></i>
                         <p>No recent errors - great job! 🎉</p>
                     </div>
@@ -227,26 +293,26 @@
         </div>
 
         <!-- Command Success Rates -->
-        <div class="card-solid rounded-2xl p-6">
+        <div class="rounded-lg border border-border bg-card p-6">
             <div class="flex items-center justify-between mb-6">
-                <h3 class="text-lg font-semibold text-gray-900">Command Success Rates</h3>
-                <span class="text-sm text-gray-500">Reliability by command</span>
+                <h3 class="text-lg font-semibold">Command Success Rates</h3>
+                <span class="text-sm text-muted-foreground">Reliability by command</span>
             </div>
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <template x-for="(rate, command) in stats.command_success_rates || {}" :key="command">
-                    <div class="p-4 rounded-lg border border-gray-200">
+                    <div class="p-4 rounded-md border border-border">
                         <div class="flex items-center justify-between mb-2">
-                            <code class="text-sm font-mono text-gray-700" x-text="command"></code>
+                            <code class="text-sm font-mono" x-text="command"></code>
                             <span class="text-sm font-medium" 
                                   :class="rate.success_rate >= 0.9 ? 'text-green-600' : rate.success_rate >= 0.7 ? 'text-yellow-600' : 'text-red-600'"
                                   x-text="Math.round(rate.success_rate * 100) + '%'"></span>
                         </div>
-                        <div class="w-full bg-gray-200 rounded-full h-2 mb-2">
-                            <div class="h-2 rounded-full transition-all duration-500" 
+                        <div class="w-full bg-muted rounded-full h-2 mb-2">
+                            <div class="h-2 rounded-full transition-all duration-300" 
                                  :class="rate.success_rate >= 0.9 ? 'bg-green-500' : rate.success_rate >= 0.7 ? 'bg-yellow-500' : 'bg-red-500'"
                                  :style="`width: ${rate.success_rate * 100}%`"></div>
                         </div>
-                        <div class="flex justify-between text-xs text-gray-500">
+                        <div class="flex justify-between text-xs text-muted-foreground">
                             <span x-text="rate.total + ' runs'"></span>
                             <span x-text="formatTime(rate.avg_time)"></span>
                         </div>
@@ -256,77 +322,85 @@
         </div>
 
         <!-- Input/Output Analytics -->
-        <div class="space-y-8">
+        <div class="space-y-6">
             <!-- IO Overview -->
-            <div class="card-solid rounded-2xl p-6">
+            <div class="rounded-lg border border-border bg-card p-6">
                 <div class="flex items-center justify-between mb-6">
-                    <h3 class="text-lg font-semibold text-gray-900">Input/Output Analytics</h3>
-                    <span class="text-sm text-gray-500">AI interaction patterns</span>
+                    <h3 class="text-lg font-semibold">Input/Output Analytics</h3>
+                    <span class="text-sm text-muted-foreground">AI interaction patterns</span>
                 </div>
                 
                 <!-- IO Summary Cards -->
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                    <div class="p-4 rounded-lg bg-gradient-to-br from-indigo-50 to-indigo-100 border border-indigo-200">
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+                    <div class="rounded-lg border border-border bg-card p-6 transition-colors hover:bg-accent/5">
                         <div class="flex items-center justify-between">
                             <div>
-                                <p class="text-sm font-medium text-indigo-900">Commands with I/O</p>
-                                <p class="text-2xl font-bold text-indigo-700" x-text="stats.input_output_analytics?.summary?.total_commands_with_io || 0"></p>
+                                <p class="text-sm text-muted-foreground">Commands with I/O</p>
+                                <p class="text-2xl font-semibold" x-text="stats.input_output_analytics?.summary?.total_commands_with_io || 0"></p>
                             </div>
-                            <i data-lucide="arrow-right-left" class="w-8 h-8 text-indigo-600"></i>
+                            <div class="h-10 w-10 rounded-md bg-blue-100 flex items-center justify-center">
+                                <i data-lucide="arrow-right-left" class="h-5 w-5 text-blue-600"></i>
+                            </div>
                         </div>
                     </div>
                     
-                    <div class="p-4 rounded-lg bg-gradient-to-br from-emerald-50 to-emerald-100 border border-emerald-200">
+                    <div class="rounded-lg border border-border bg-card p-6 transition-colors hover:bg-accent/5">
                         <div class="flex items-center justify-between">
                             <div>
-                                <p class="text-sm font-medium text-emerald-900">Avg Input Size</p>
-                                <p class="text-2xl font-bold text-emerald-700" x-text="formatBytes(stats.input_output_analytics?.summary?.avg_input_length || 0)"></p>
+                                <p class="text-sm text-muted-foreground">Avg Input Size</p>
+                                <p class="text-2xl font-semibold" x-text="formatBytes(stats.input_output_analytics?.summary?.avg_input_length || 0)"></p>
                             </div>
-                            <i data-lucide="download" class="w-8 h-8 text-emerald-600"></i>
+                            <div class="h-10 w-10 rounded-md bg-green-100 flex items-center justify-center">
+                                <i data-lucide="download" class="h-5 w-5 text-green-600"></i>
+                            </div>
                         </div>
                     </div>
                     
-                    <div class="p-4 rounded-lg bg-gradient-to-br from-amber-50 to-amber-100 border border-amber-200">
+                    <div class="rounded-lg border border-border bg-card p-6 transition-colors hover:bg-accent/5">
                         <div class="flex items-center justify-between">
                             <div>
-                                <p class="text-sm font-medium text-amber-900">Avg Output Size</p>
-                                <p class="text-2xl font-bold text-amber-700" x-text="formatBytes(stats.input_output_analytics?.summary?.avg_output_length || 0)"></p>
+                                <p class="text-sm text-muted-foreground">Avg Output Size</p>
+                                <p class="text-2xl font-semibold" x-text="formatBytes(stats.input_output_analytics?.summary?.avg_output_length || 0)"></p>
                             </div>
-                            <i data-lucide="upload" class="w-8 h-8 text-amber-600"></i>
+                            <div class="h-10 w-10 rounded-md bg-amber-100 flex items-center justify-center">
+                                <i data-lucide="upload" class="h-5 w-5 text-amber-600"></i>
+                            </div>
                         </div>
                     </div>
                     
-                    <div class="p-4 rounded-lg bg-gradient-to-br from-rose-50 to-rose-100 border border-rose-200">
+                    <div class="rounded-lg border border-border bg-card p-6 transition-colors hover:bg-accent/5">
                         <div class="flex items-center justify-between">
                             <div>
-                                <p class="text-sm font-medium text-rose-900">Input Types</p>
-                                <p class="text-2xl font-bold text-rose-700" x-text="(stats.input_output_analytics?.summary?.input_types || []).length"></p>
+                                <p class="text-sm text-muted-foreground">Input Types</p>
+                                <p class="text-2xl font-semibold" x-text="(stats.input_output_analytics?.summary?.input_types || []).length"></p>
                             </div>
-                            <i data-lucide="file-type" class="w-8 h-8 text-rose-600"></i>
+                            <div class="h-10 w-10 rounded-md bg-rose-100 flex items-center justify-center">
+                                <i data-lucide="file-type" class="h-5 w-5 text-rose-600"></i>
+                            </div>
                         </div>
                     </div>
                 </div>
                 
                 <!-- IO by Command -->
                 <div class="space-y-4">
-                    <h4 class="text-md font-semibold text-gray-800">Input/Output by Command</h4>
+                    <h4 class="font-semibold">Input/Output by Command</h4>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <template x-for="command in stats.input_output_analytics?.by_command || []" :key="command.command + command.input_type">
-                            <div class="p-4 rounded-lg border border-gray-200 bg-gray-50">
+                            <div class="p-4 rounded-md border border-border bg-muted/20">
                                 <div class="flex items-center justify-between mb-2">
                                     <div class="flex items-center space-x-2">
-                                        <code class="text-sm font-mono text-gray-700" x-text="command.command"></code>
-                                        <span class="text-xs bg-gray-200 text-gray-600 px-2 py-1 rounded" x-text="command.input_type"></span>
+                                        <code class="text-sm font-mono" x-text="command.command"></code>
+                                        <span class="text-xs bg-muted text-muted-foreground px-2 py-1 rounded" x-text="command.input_type"></span>
                                     </div>
-                                    <span class="text-sm font-medium text-gray-600" x-text="command.total_io + ' ops'"></span>
+                                    <span class="text-sm font-medium text-muted-foreground" x-text="command.total_io + ' ops'"></span>
                                 </div>
                                 <div class="grid grid-cols-2 gap-4 text-sm">
                                     <div>
-                                        <span class="text-gray-500">Input:</span>
+                                        <span class="text-muted-foreground">Input:</span>
                                         <span class="font-medium" x-text="formatBytes(command.avg_input_length)"></span>
                                     </div>
                                     <div>
-                                        <span class="text-gray-500">Output:</span>
+                                        <span class="text-muted-foreground">Output:</span>
                                         <span class="font-medium" x-text="formatBytes(command.avg_output_length)"></span>
                                     </div>
                                 </div>
@@ -337,21 +411,28 @@
             </div>
 
             <!-- Recent I/O Samples -->
-            <div class="card-solid rounded-2xl p-6">
+            <div class="rounded-lg border border-border bg-card p-6">
                 <div class="flex items-center justify-between mb-6">
-                    <h3 class="text-lg font-semibold text-gray-900">Recent Input/Output Samples</h3>
-                    <span class="text-sm text-gray-500">Latest AI interactions</span>
+                    <h3 class="text-lg font-semibold">Recent Input/Output Samples</h3>
+                    <div class="flex items-center space-x-3">
+                        <span class="text-sm text-muted-foreground">Latest AI interactions</span>
+                        <button onclick="window.location.href='/io-samples'" 
+                                class="inline-flex items-center space-x-2 px-3 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 transition-colors">
+                            <i data-lucide="expand" class="w-4 h-4"></i>
+                            <span>View All Samples</span>
+                        </button>
+                    </div>
                 </div>
                 
                 <div class="space-y-4">
                     <template x-for="sample in stats.input_output_analytics?.recent_samples || []" :key="sample.timestamp">
-                        <div class="p-4 rounded-lg border border-gray-200 bg-gray-50">
+                        <div class="p-4 rounded-md border border-border bg-muted/20">
                             <div class="flex items-center justify-between mb-3">
                                 <div class="flex items-center space-x-2">
-                                    <code class="text-sm font-mono text-gray-700" x-text="sample.command"></code>
+                                    <code class="text-sm font-mono" x-text="sample.command"></code>
                                     <span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded" x-text="sample.input_type"></span>
                                 </div>
-                                <div class="flex items-center space-x-4 text-sm text-gray-500">
+                                <div class="flex items-center space-x-4 text-sm text-muted-foreground">
                                     <span x-text="formatBytes(sample.input_length) + ' → ' + formatBytes(sample.output_length)"></span>
                                     <span x-text="formatRelativeTime(sample.timestamp)"></span>
                                 </div>

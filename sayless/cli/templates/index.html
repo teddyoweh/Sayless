@@ -48,8 +48,14 @@
                     <div class="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-purple-600/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
                     <div class="relative">
                         <div class="flex items-start justify-between mb-4">
-                            <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center">
-                                <i data-lucide="brain" class="w-5 h-5 text-white"></i>
+                            <div class="w-10 h-10 rounded-lg bg-white border border-gray-200 flex items-center justify-center p-1">
+                                {% if status.provider == 'openai' %}
+                                    <img src="{{ url_for('static', filename='openailogo.png') }}" alt="OpenAI" class="w-6 h-6 object-contain">
+                                {% elif status.provider == 'claude' %}
+                                    <img src="{{ url_for('static', filename='claudelogo.png') }}" alt="Claude" class="w-6 h-6 object-contain">
+                                {% else %}
+                                    <i data-lucide="brain" class="w-5 h-5 text-purple-600"></i>
+                                {% endif %}
                             </div>
                             <div class="flex items-center space-x-1">
                                 <div class="w-2 h-2 rounded-full" :class="{
@@ -167,8 +173,14 @@
                             <div class="absolute inset-0 bg-black/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
                             <div class="relative">
                                 <div class="flex items-center justify-between mb-3">
-                                    <div class="w-10 h-10 rounded-lg bg-white/20 flex items-center justify-center">
-                                        <i data-lucide="brain" class="w-5 h-5"></i>
+                                    <div class="w-10 h-10 rounded-lg bg-white/30 flex items-center justify-center p-1">
+                                        {% if status.provider == 'openai' %}
+                                            <img src="{{ url_for('static', filename='openailogo.png') }}" alt="OpenAI" class="w-6 h-6 object-contain">
+                                        {% elif status.provider == 'claude' %}
+                                            <img src="{{ url_for('static', filename='claudelogo.png') }}" alt="Claude" class="w-6 h-6 object-contain">
+                                        {% else %}
+                                            <i data-lucide="brain" class="w-5 h-5"></i>
+                                        {% endif %}
                                     </div>
                                     <i data-lucide="arrow-right" class="w-4 h-4 opacity-60 group-hover:opacity-100 group-hover:translate-x-1 transition-all"></i>
                                 </div>
@@ -220,6 +232,156 @@
                                 </div>
                                 <h3 class="font-semibold text-card-foreground mb-1">Browse Commands</h3>
                                 <p class="text-sm text-muted-foreground">Learn all available Sayless commands</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Recent Activity & Git Status -->
+                    <div class="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <!-- Recent Activity -->
+                        <div class="rounded-xl bg-card border border-border p-6">
+                            <div class="flex items-center justify-between mb-4">
+                                <h3 class="font-semibold text-card-foreground">Recent Activity</h3>
+                                <i data-lucide="activity" class="w-4 h-4 text-muted-foreground"></i>
+                            </div>
+                            <div class="space-y-3" x-show="!analyticsLoading">
+                                <template x-for="activity in recentActivity.slice(0, 3)" :key="activity.timestamp">
+                                    <div class="flex items-center justify-between p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors">
+                                        <div class="flex items-center space-x-3">
+                                            <div class="w-2 h-2 rounded-full" :class="{
+                                                'bg-green-500': activity.success,
+                                                'bg-red-500': !activity.success
+                                            }"></div>
+                                            <div>
+                                                <p class="text-sm font-medium text-card-foreground" x-text="activity.command"></p>
+                                                <p class="text-xs text-muted-foreground" x-text="formatRelativeTime(activity.timestamp)"></p>
+                                            </div>
+                                        </div>
+                                        <div class="text-right">
+                                            <p class="text-xs text-muted-foreground" x-text="formatTime(activity.execution_time)"></p>
+                                            <span class="text-xs px-2 py-1 rounded-full" :class="{
+                                                'bg-green-100 text-green-700': activity.success,
+                                                'bg-red-100 text-red-700': !activity.success
+                                            }" x-text="activity.success ? 'Success' : 'Failed'"></span>
+                                        </div>
+                                    </div>
+                                </template>
+                                <div x-show="recentActivity.length === 0" class="text-center py-6 text-muted-foreground">
+                                    <i data-lucide="zap" class="w-8 h-8 mx-auto mb-2 opacity-50"></i>
+                                    <p class="text-sm">No recent activity</p>
+                                    <p class="text-xs">Start using commands to see activity here</p>
+                                </div>
+                            </div>
+                            <div x-show="analyticsLoading" class="flex items-center justify-center py-6">
+                                <i data-lucide="loader-2" class="w-4 h-4 animate-spin text-muted-foreground"></i>
+                            </div>
+                        </div>
+
+                        <!-- Git Repository Status -->
+                        <div class="rounded-xl bg-card border border-border p-6">
+                            <div class="flex items-center justify-between mb-4">
+                                <h3 class="font-semibold text-card-foreground">Repository Status</h3>
+                                <i data-lucide="git-branch" class="w-4 h-4 text-muted-foreground"></i>
+                            </div>
+                            {% if status.git_repo %}
+                                <div class="space-y-3">
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-sm text-muted-foreground">Current Branch</span>
+                                        <code class="text-sm bg-muted px-2 py-1 rounded font-mono">{{ status.git_status.branch if status.git_status else 'main' }}</code>
+                                    </div>
+                                    {% if status.git_status %}
+                                        <div class="flex items-center justify-between">
+                                            <span class="text-sm text-muted-foreground">Status</span>
+                                            {% if status.git_status.clean %}
+                                                <span class="text-sm px-2 py-1 rounded-full bg-green-100 text-green-700">Clean</span>
+                                            {% else %}
+                                                <span class="text-sm px-2 py-1 rounded-full bg-yellow-100 text-yellow-700">{{ status.git_status.changes }} changes</span>
+                                            {% endif %}
+                                        </div>
+                                        {% if not status.git_status.clean %}
+                                            <div class="pt-3 border-t space-y-2">
+                                                <div class="flex items-center justify-between text-sm">
+                                                    <span class="text-muted-foreground">Modified files</span>
+                                                    <span class="text-yellow-600 font-medium">{{ status.git_status.changes }}</span>
+                                                </div>
+                                            </div>
+                                        {% endif %}
+                                    {% endif %}
+                                    <div class="pt-3 border-t">
+                                        <button onclick="copyToClipboard('sayless g -a')" class="w-full text-xs text-center py-2 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg transition-colors">
+                                            Quick Commit (sl g -a)
+                                        </button>
+                                    </div>
+                                </div>
+                            {% else %}
+                                <div class="text-center py-6 text-muted-foreground">
+                                    <i data-lucide="folder-x" class="w-8 h-8 mx-auto mb-2 opacity-50"></i>
+                                    <p class="text-sm">No Git repository</p>
+                                    <p class="text-xs">Navigate to a Git repository to see status</p>
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- AI Usage Preview -->
+                    <div class="mt-6 rounded-xl bg-gradient-to-br from-indigo-50 via-white to-purple-50 border border-indigo-100 p-6">
+                        <div class="flex items-center justify-between mb-4">
+                            <div>
+                                <h3 class="font-semibold text-card-foreground">AI Insights</h3>
+                                <p class="text-xs text-muted-foreground">Your intelligent workflow patterns</p>
+                            </div>
+                            <button onclick="window.location.href='/analytics'" class="text-xs text-indigo-600 hover:text-indigo-800 font-medium">
+                                View Dashboard →
+                            </button>
+                        </div>
+                        <div x-show="!analyticsLoading" class="grid grid-cols-3 gap-4 mb-4">
+                            <div class="text-center p-3 rounded-lg bg-white/60 border border-white/40">
+                                <p class="text-lg font-bold text-indigo-600" x-text="analytics.total_commands || 0"></p>
+                                <p class="text-xs text-muted-foreground">Commands</p>
+                            </div>
+                            <div class="text-center p-3 rounded-lg bg-white/60 border border-white/40">
+                                <p class="text-lg font-bold text-emerald-600" x-text="Math.round((analytics.success_rate || 0) * 100) + '%'"></p>
+                                <p class="text-xs text-muted-foreground">Success</p>
+                            </div>
+                            <div class="text-center p-3 rounded-lg bg-white/60 border border-white/40">
+                                <p class="text-lg font-bold text-purple-600" x-text="(analytics.input_output_analytics?.summary?.total_commands_with_io || 0)"></p>
+                                <p class="text-xs text-muted-foreground">AI Ops</p>
+                            </div>
+                        </div>
+                        <div x-show="analyticsLoading" class="flex items-center justify-center py-6">
+                            <i data-lucide="loader-2" class="w-4 h-4 animate-spin text-indigo-500"></i>
+                        </div>
+                        <div class="text-center">
+                            <p class="text-xs text-muted-foreground mb-2">Most used: <span class="font-medium" x-text="getTopCommand(analytics)"></span></p>
+                            <div class="w-full bg-indigo-100 rounded-full h-2">
+                                <div class="bg-gradient-to-r from-indigo-500 to-purple-500 h-2 rounded-full" :style="`width: ${Math.min((analytics.success_rate || 0) * 100, 100)}%`"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Pro Tips -->
+                    <div class="mt-6 rounded-xl bg-gradient-to-br from-amber-50 via-white to-orange-50 border border-amber-100 p-6">
+                        <div class="flex items-center justify-between mb-4">
+                            <div>
+                                <h3 class="font-semibold text-card-foreground flex items-center space-x-2">
+                                    <i data-lucide="lightbulb" class="w-4 h-4 text-amber-500"></i>
+                                    <span>Pro Tips</span>
+                                </h3>
+                                <p class="text-xs text-muted-foreground">Boost your productivity</p>
+                            </div>
+                        </div>
+                        <div class="space-y-3">
+                            <div class="p-3 rounded-lg bg-white/60 border border-white/40">
+                                <p class="text-sm font-medium text-card-foreground mb-1">💡 Quick Aliases</p>
+                                <p class="text-xs text-muted-foreground">Use <code class="bg-amber-100 px-1 rounded">sl</code> instead of <code class="bg-amber-100 px-1 rounded">sayless</code> for faster commands</p>
+                            </div>
+                            <div class="p-3 rounded-lg bg-white/60 border border-white/40">
+                                <p class="text-sm font-medium text-card-foreground mb-1">🚀 Auto-stage</p>
+                                <p class="text-xs text-muted-foreground">Use <code class="bg-amber-100 px-1 rounded">sl g -a</code> to stage all changes and commit in one go</p>
+                            </div>
+                            <div class="p-3 rounded-lg bg-white/60 border border-white/40">
+                                <p class="text-sm font-medium text-card-foreground mb-1">🔍 Smart Search</p>
+                                <p class="text-xs text-muted-foreground">Find commits by meaning: <code class="bg-amber-100 px-1 rounded">sl search "fix bug"</code></p>
                             </div>
                         </div>
                     </div>
@@ -613,6 +775,7 @@ function dashboard() {
         testResult: null,
         analytics: {},
         analyticsLoading: true,
+        recentActivity: [],
         providerConfigured: {{ 'true' if status.openai_configured else 'false' }},
         providerWorking: {{ 'true' if status.get('openai_working', False) else 'false' }},
         githubConfigured: {{ 'true' if status.github_configured else 'false' }},
@@ -670,9 +833,15 @@ function dashboard() {
             try {
                 const response = await api.get('/api/analytics/overview?days=7');
                 this.analytics = response;
+                
+                // Load recent activity
+                if (response.recent_activity) {
+                    this.recentActivity = response.recent_activity.slice(0, 5);
+                }
             } catch (error) {
                 console.error('Failed to load analytics:', error);
                 this.analytics = {};
+                this.recentActivity = [];
             } finally {
                 this.analyticsLoading = false;
             }
@@ -681,6 +850,28 @@ function dashboard() {
         getTopCommand(analytics) {
             const commands = analytics.most_used_commands || [];
             return commands.length > 0 ? commands[0].command : 'N/A';
+        },
+        
+        formatRelativeTime(timestamp) {
+            const now = new Date();
+            const time = new Date(timestamp);
+            const diffMs = now - time;
+            const diffMins = Math.floor(diffMs / 60000);
+            const diffHours = Math.floor(diffMs / 3600000);
+            const diffDays = Math.floor(diffMs / 86400000);
+            
+            if (diffMins < 1) return 'just now';
+            if (diffMins < 60) return `${diffMins}m ago`;
+            if (diffHours < 24) return `${diffHours}h ago`;
+            if (diffDays < 7) return `${diffDays}d ago`;
+            return time.toLocaleDateString();
+        },
+        
+        formatTime(timeMs) {
+            if (!timeMs) return 'N/A';
+            if (timeMs < 1000) return `${timeMs}ms`;
+            const seconds = (timeMs / 1000).toFixed(1);
+            return `${seconds}s`;
         }
     }
 }

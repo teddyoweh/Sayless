@@ -495,6 +495,78 @@ class UsageTracker:
                 return output.getvalue()
         
         return json.dumps(stats, indent=2, default=str)
+    
+    def get_detailed_io_samples(self, days: int = 30, limit: int = 100, command: str = None, input_type: str = None) -> List[Dict[str, Any]]:
+        """Get detailed input/output samples with filtering"""
+        
+        since_date = datetime.now() - timedelta(days=days)
+        
+        # Build query with filters
+        query = '''
+            SELECT 
+                command,
+                subcommand,
+                input_type,
+                input_length,
+                output_length,
+                input_data,
+                output_data,
+                SUBSTR(input_data, 1, 500) as input_preview,
+                SUBSTR(output_data, 1, 500) as output_preview,
+                timestamp,
+                execution_time,
+                success,
+                provider,
+                model
+            FROM command_usage 
+            WHERE timestamp >= ? AND (input_data IS NOT NULL OR output_data IS NOT NULL)
+        '''
+        
+        params = [since_date]
+        
+        # Add command filter
+        if command:
+            query += ' AND command = ?'
+            params.append(command)
+        
+        # Add input type filter
+        if input_type:
+            query += ' AND input_type = ?'
+            params.append(input_type)
+        
+        query += ' ORDER BY timestamp DESC LIMIT ?'
+        params.append(limit)
+        
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            
+            results = conn.execute(query, params).fetchall()
+            
+            samples = []
+            for row in results:
+                # Create full command name
+                full_command = row['command']
+                if row['subcommand']:
+                    full_command += f" {row['subcommand']}"
+                
+                sample = {
+                    'command': full_command,
+                    'input_type': row['input_type'],
+                    'input_length': row['input_length'] or 0,
+                    'output_length': row['output_length'] or 0,
+                    'input_preview': row['input_preview'],
+                    'output_preview': row['output_preview'],
+                    'input_data': row['input_data'],  # Full data for modal view
+                    'output_data': row['output_data'], # Full data for modal view
+                    'timestamp': row['timestamp'],
+                    'execution_time': row['execution_time'],
+                    'success': row['success'],
+                    'provider': row['provider'],
+                    'model': row['model']
+                }
+                samples.append(sample)
+            
+            return samples
 
 
 # Global tracker instance

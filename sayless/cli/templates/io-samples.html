@@ -1,0 +1,521 @@
+{% extends "base.html" %}
+
+{% block title %}Input/Output Samples - Sayless{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gradient-to-br from-background via-background to-muted/20" x-data="ioSamples()">
+    <!-- Header Section -->
+    <div class="px-6 py-8">
+        <div class="max-w-7xl mx-auto">
+            <!-- Breadcrumb & Title -->
+            <div class="flex items-center space-x-2 text-sm text-muted-foreground mb-4">
+                <a href="/" class="hover:text-foreground transition-colors">Dashboard</a>
+                <i data-lucide="chevron-right" class="w-4 h-4"></i>
+                <a href="/analytics" class="hover:text-foreground transition-colors">Analytics</a>
+                <i data-lucide="chevron-right" class="w-4 h-4"></i>
+                <span class="text-foreground">Input/Output Samples</span>
+            </div>
+            
+            <div class="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-700 p-8 text-white mb-8">
+                <div class="absolute inset-0 bg-grid-white/10 bg-[size:20px_20px] opacity-20"></div>
+                <div class="relative">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h1 class="text-3xl font-bold mb-2 flex items-center space-x-3">
+                                <i data-lucide="arrow-right-left" class="w-8 h-8"></i>
+                                <span>AI Input/Output Samples</span>
+                            </h1>
+                            <p class="text-blue-100 text-lg">Explore detailed AI interactions, analyze patterns, and understand your workflow</p>
+                        </div>
+                        <div class="hidden md:flex items-center space-x-4">
+                            <div class="text-center p-4 bg-white/10 rounded-xl backdrop-blur-sm">
+                                <p class="text-2xl font-bold" x-text="samples.length"></p>
+                                <p class="text-xs text-blue-200">Total Samples</p>
+                            </div>
+                            <div class="text-center p-4 bg-white/10 rounded-xl backdrop-blur-sm">
+                                <p class="text-2xl font-bold" x-text="uniqueCommands.length"></p>
+                                <p class="text-xs text-blue-200">Commands</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="px-6 pb-8">
+        <div class="max-w-7xl mx-auto">
+            <!-- Filters & Controls -->
+            <div class="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-8">
+                <!-- Search -->
+                <div class="lg:col-span-2">
+                    <label class="block text-sm font-medium text-card-foreground mb-2">Search</label>
+                    <div class="relative">
+                        <i data-lucide="search" class="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground"></i>
+                        <input x-model="searchQuery" @input="filterSamples()" 
+                               type="text" 
+                               placeholder="Search input, output, or commands..." 
+                               class="w-full pl-10 pr-4 py-3 border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition-colors">
+                        <div x-show="searchQuery" @click="searchQuery = ''; filterSamples()" 
+                             class="absolute right-3 top-1/2 transform -translate-y-1/2 cursor-pointer">
+                            <i data-lucide="x" class="w-4 h-4 text-muted-foreground hover:text-foreground"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Command Filter -->
+                <div>
+                    <label class="block text-sm font-medium text-card-foreground mb-2">Command</label>
+                    <select x-model="selectedCommand" @change="filterSamples()" 
+                            class="w-full px-4 py-3 border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition-colors">
+                        <option value="">All Commands</option>
+                        <template x-for="command in uniqueCommands" :key="command">
+                            <option :value="command" x-text="command"></option>
+                        </template>
+                    </select>
+                </div>
+
+                <!-- Input Type Filter -->
+                <div>
+                    <label class="block text-sm font-medium text-card-foreground mb-2">Input Type</label>
+                    <select x-model="selectedInputType" @change="filterSamples()" 
+                            class="w-full px-4 py-3 border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition-colors">
+                        <option value="">All Types</option>
+                        <template x-for="type in uniqueInputTypes" :key="type">
+                            <option :value="type" x-text="type"></option>
+                        </template>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Sort & View Options -->
+            <div class="flex items-center justify-between mb-6">
+                <div class="flex items-center space-x-4">
+                    <div class="flex items-center space-x-2">
+                        <label class="text-sm font-medium text-card-foreground">Sort by:</label>
+                        <select x-model="sortBy" @change="filterSamples()" 
+                                class="px-3 py-2 border border-border rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-transparent">
+                            <option value="timestamp">Newest First</option>
+                            <option value="timestamp_asc">Oldest First</option>
+                            <option value="input_size">Input Size</option>
+                            <option value="output_size">Output Size</option>
+                            <option value="command">Command</option>
+                        </select>
+                    </div>
+                    <div class="text-sm text-muted-foreground">
+                        Showing <span x-text="filteredSamples.length"></span> of <span x-text="samples.length"></span> samples
+                    </div>
+                </div>
+                
+                <div class="flex items-center space-x-2">
+                    <button @click="viewMode = 'compact'" 
+                            :class="viewMode === 'compact' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'"
+                            class="px-3 py-2 rounded-lg text-sm transition-colors">
+                        <i data-lucide="list" class="w-4 h-4"></i>
+                    </button>
+                    <button @click="viewMode = 'detailed'" 
+                            :class="viewMode === 'detailed' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'"
+                            class="px-3 py-2 rounded-lg text-sm transition-colors">
+                        <i data-lucide="layout" class="w-4 h-4"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Loading State -->
+            <div x-show="loading" class="flex items-center justify-center py-12">
+                <div class="flex items-center space-x-3">
+                    <i data-lucide="loader-2" class="w-6 h-6 animate-spin text-primary"></i>
+                    <span class="text-muted-foreground">Loading AI interactions...</span>
+                </div>
+            </div>
+
+            <!-- Samples List -->
+            <div x-show="!loading" class="space-y-4">
+                <!-- Compact View -->
+                <template x-if="viewMode === 'compact'">
+                    <div class="space-y-3">
+                        <template x-for="sample in paginatedSamples" :key="sample.timestamp">
+                            <div class="group relative overflow-hidden rounded-xl bg-card border border-border p-4 hover:shadow-lg transition-all duration-200 cursor-pointer"
+                                 @click="selectedSample = sample; showModal = true">
+                                <div class="flex items-start justify-between">
+                                    <div class="flex-1">
+                                        <div class="flex items-center space-x-3 mb-2">
+                                            <code class="text-sm font-mono bg-muted px-2 py-1 rounded text-primary" x-text="sample.command"></code>
+                                            <span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full" x-text="sample.input_type"></span>
+                                            <span class="text-xs text-muted-foreground" x-text="formatRelativeTime(sample.timestamp)"></span>
+                                        </div>
+                                        <p class="text-sm text-muted-foreground line-clamp-2" x-text="sample.input_preview || 'No input preview'"></p>
+                                    </div>
+                                    <div class="flex items-center space-x-4 text-sm text-muted-foreground">
+                                        <div class="text-right">
+                                            <p class="font-medium text-green-600" x-text="formatBytes(sample.input_length)"></p>
+                                            <p class="text-xs">Input</p>
+                                        </div>
+                                        <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                                        <div class="text-right">
+                                            <p class="font-medium text-blue-600" x-text="formatBytes(sample.output_length)"></p>
+                                            <p class="text-xs">Output</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+
+                <!-- Detailed View -->
+                <template x-if="viewMode === 'detailed'">
+                    <div class="space-y-6">
+                        <template x-for="sample in paginatedSamples" :key="sample.timestamp">
+                            <div class="relative overflow-hidden rounded-2xl bg-card border border-border p-6 hover:shadow-lg transition-all duration-200">
+                                <div class="flex items-center justify-between mb-4">
+                                    <div class="flex items-center space-x-3">
+                                        <code class="text-lg font-mono bg-muted px-3 py-2 rounded-lg text-primary" x-text="sample.command"></code>
+                                        <span class="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-sm font-medium" x-text="sample.input_type"></span>
+                                    </div>
+                                    <div class="flex items-center space-x-6 text-sm text-muted-foreground">
+                                        <div class="text-center">
+                                            <p class="font-bold text-green-600 text-lg" x-text="formatBytes(sample.input_length)"></p>
+                                            <p class="text-xs">Input Size</p>
+                                        </div>
+                                        <i data-lucide="arrow-right" class="w-5 h-5"></i>
+                                        <div class="text-center">
+                                            <p class="font-bold text-blue-600 text-lg" x-text="formatBytes(sample.output_length)"></p>
+                                            <p class="text-xs">Output Size</p>
+                                        </div>
+                                        <div class="text-center">
+                                            <p class="font-medium" x-text="formatRelativeTime(sample.timestamp)"></p>
+                                            <p class="text-xs">Timestamp</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                    <!-- Input Preview -->
+                                    <div class="space-y-3">
+                                        <div class="flex items-center space-x-2">
+                                            <i data-lucide="download" class="w-5 h-5 text-green-600"></i>
+                                            <span class="font-semibold text-green-700">Input Preview</span>
+                                        </div>
+                                        <div class="bg-green-50 border border-green-200 rounded-lg p-4 max-h-64 overflow-y-auto">
+                                            <pre class="text-sm text-green-800 whitespace-pre-wrap font-mono" x-text="sample.input_preview || 'No preview available'"></pre>
+                                            <div x-show="sample.input_preview && sample.input_preview.length >= 500" 
+                                                 class="text-xs text-green-600 mt-2 flex items-center space-x-1">
+                                                <i data-lucide="more-horizontal" class="w-3 h-3"></i>
+                                                <span>Content truncated - click to view full</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Output Preview -->
+                                    <div class="space-y-3">
+                                        <div class="flex items-center space-x-2">
+                                            <i data-lucide="upload" class="w-5 h-5 text-blue-600"></i>
+                                            <span class="font-semibold text-blue-700">Output Preview</span>
+                                        </div>
+                                        <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 max-h-64 overflow-y-auto">
+                                            <pre class="text-sm text-blue-800 whitespace-pre-wrap font-mono" x-text="sample.output_preview || 'No preview available'"></pre>
+                                            <div x-show="sample.output_preview && sample.output_preview.length >= 500" 
+                                                 class="text-xs text-blue-600 mt-2 flex items-center space-x-1">
+                                                <i data-lucide="more-horizontal" class="w-3 h-3"></i>
+                                                <span>Content truncated - click to view full</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="mt-4 flex items-center justify-between">
+                                    <div class="flex items-center space-x-4">
+                                        <span class="text-xs text-muted-foreground">
+                                            Efficiency: <span class="font-medium" x-text="((sample.output_length / sample.input_length) * 100).toFixed(1) + '%'"></span>
+                                        </span>
+                                    </div>
+                                    <button @click="selectedSample = sample; showModal = true" 
+                                            class="flex items-center space-x-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors text-sm">
+                                        <i data-lucide="expand" class="w-4 h-4"></i>
+                                        <span>View Full</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+
+                <!-- Empty State -->
+                <div x-show="filteredSamples.length === 0 && !loading" class="text-center py-12">
+                    <div class="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
+                        <i data-lucide="search-x" class="w-8 h-8 text-muted-foreground"></i>
+                    </div>
+                    <h3 class="text-lg font-semibold text-card-foreground mb-2">No samples found</h3>
+                    <p class="text-muted-foreground mb-4">Try adjusting your search criteria or filters</p>
+                    <button @click="clearFilters()" class="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors">
+                        Clear Filters
+                    </button>
+                </div>
+
+                <!-- Pagination -->
+                <div x-show="filteredSamples.length > samplesPerPage" class="flex items-center justify-between mt-8">
+                    <div class="text-sm text-muted-foreground">
+                        Showing <span x-text="((currentPage - 1) * samplesPerPage) + 1"></span> to 
+                        <span x-text="Math.min(currentPage * samplesPerPage, filteredSamples.length)"></span> of 
+                        <span x-text="filteredSamples.length"></span> results
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <button @click="currentPage = Math.max(1, currentPage - 1)" 
+                                :disabled="currentPage === 1"
+                                class="px-3 py-2 border border-border rounded-lg text-sm hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                            Previous
+                        </button>
+                        <template x-for="page in visiblePages" :key="page">
+                            <button @click="currentPage = page" 
+                                    :class="currentPage === page ? 'bg-primary text-primary-foreground' : 'border border-border'"
+                                    class="px-3 py-2 rounded-lg text-sm hover:bg-muted transition-colors" 
+                                    x-text="page"></button>
+                        </template>
+                        <button @click="currentPage = Math.min(totalPages, currentPage + 1)" 
+                                :disabled="currentPage === totalPages"
+                                class="px-3 py-2 border border-border rounded-lg text-sm hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                            Next
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Full View Modal -->
+    <div x-show="showModal" x-transition.opacity class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div @click.away="showModal = false" 
+             class="bg-card rounded-2xl shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-hidden">
+            <!-- Modal Header -->
+            <div class="flex items-center justify-between p-6 border-b border-border">
+                <div class="flex items-center space-x-3">
+                    <code class="text-lg font-mono bg-muted px-3 py-2 rounded-lg text-primary" x-text="selectedSample?.command"></code>
+                    <span class="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-sm font-medium" x-text="selectedSample?.input_type"></span>
+                    <span class="text-sm text-muted-foreground" x-text="selectedSample ? formatRelativeTime(selectedSample.timestamp) : ''"></span>
+                </div>
+                <button @click="showModal = false" class="text-muted-foreground hover:text-foreground">
+                    <i data-lucide="x" class="w-6 h-6"></i>
+                </button>
+            </div>
+            
+            <!-- Modal Content -->
+            <div class="p-6 max-h-[70vh] overflow-y-auto">
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <!-- Full Input -->
+                    <div class="space-y-3">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-2">
+                                <i data-lucide="download" class="w-5 h-5 text-green-600"></i>
+                                <span class="font-semibold text-green-700">Full Input</span>
+                            </div>
+                            <span class="text-sm text-muted-foreground" x-text="selectedSample ? formatBytes(selectedSample.input_length) : ''"></span>
+                        </div>
+                        <div class="bg-green-50 border border-green-200 rounded-lg p-4 max-h-96 overflow-y-auto">
+                            <pre class="text-sm text-green-800 whitespace-pre-wrap font-mono" x-text="selectedSample?.input_data || selectedSample?.input_preview || 'No input data available'"></pre>
+                        </div>
+                    </div>
+                    
+                    <!-- Full Output -->
+                    <div class="space-y-3">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-2">
+                                <i data-lucide="upload" class="w-5 h-5 text-blue-600"></i>
+                                <span class="font-semibold text-blue-700">Full Output</span>
+                            </div>
+                            <span class="text-sm text-muted-foreground" x-text="selectedSample ? formatBytes(selectedSample.output_length) : ''"></span>
+                        </div>
+                        <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 max-h-96 overflow-y-auto">
+                            <pre class="text-sm text-blue-800 whitespace-pre-wrap font-mono" x-text="selectedSample?.output_data || selectedSample?.output_preview || 'No output data available'"></pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function ioSamples() {
+    return {
+        loading: true,
+        samples: [],
+        filteredSamples: [],
+        paginatedSamples: [],
+        
+        // Filters
+        searchQuery: '',
+        selectedCommand: '',
+        selectedInputType: '',
+        sortBy: 'timestamp',
+        viewMode: 'detailed',
+        
+        // Pagination
+        currentPage: 1,
+        samplesPerPage: 10,
+        
+        // Modal
+        showModal: false,
+        selectedSample: null,
+        
+        async init() {
+            await this.loadSamples();
+            this.filterSamples();
+        },
+        
+        async loadSamples() {
+            this.loading = true;
+            try {
+                const response = await api.get('/api/analytics/io-samples');
+                this.samples = response.samples || [];
+                
+                // Sort by timestamp descending by default
+                this.samples.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                
+            } catch (error) {
+                console.error('Failed to load samples:', error);
+                showNotification('Failed to load input/output samples', 'error');
+                this.samples = [];
+            } finally {
+                this.loading = false;
+            }
+        },
+        
+        filterSamples() {
+            let filtered = [...this.samples];
+            
+            // Apply search filter
+            if (this.searchQuery) {
+                const query = this.searchQuery.toLowerCase();
+                filtered = filtered.filter(sample => 
+                    (sample.command && sample.command.toLowerCase().includes(query)) ||
+                    (sample.input_preview && sample.input_preview.toLowerCase().includes(query)) ||
+                    (sample.output_preview && sample.output_preview.toLowerCase().includes(query)) ||
+                    (sample.input_type && sample.input_type.toLowerCase().includes(query))
+                );
+            }
+            
+            // Apply command filter
+            if (this.selectedCommand) {
+                filtered = filtered.filter(sample => sample.command === this.selectedCommand);
+            }
+            
+            // Apply input type filter
+            if (this.selectedInputType) {
+                filtered = filtered.filter(sample => sample.input_type === this.selectedInputType);
+            }
+            
+            // Apply sorting
+            filtered.sort((a, b) => {
+                switch(this.sortBy) {
+                    case 'timestamp':
+                        return new Date(b.timestamp) - new Date(a.timestamp);
+                    case 'timestamp_asc':
+                        return new Date(a.timestamp) - new Date(b.timestamp);
+                    case 'input_size':
+                        return (b.input_length || 0) - (a.input_length || 0);
+                    case 'output_size':
+                        return (b.output_length || 0) - (a.output_length || 0);
+                    case 'command':
+                        return (a.command || '').localeCompare(b.command || '');
+                    default:
+                        return 0;
+                }
+            });
+            
+            this.filteredSamples = filtered;
+            this.currentPage = 1; // Reset to first page
+            this.updatePagination();
+        },
+        
+        updatePagination() {
+            const start = (this.currentPage - 1) * this.samplesPerPage;
+            const end = start + this.samplesPerPage;
+            this.paginatedSamples = this.filteredSamples.slice(start, end);
+        },
+        
+        clearFilters() {
+            this.searchQuery = '';
+            this.selectedCommand = '';
+            this.selectedInputType = '';
+            this.sortBy = 'timestamp';
+            this.filterSamples();
+        },
+        
+        get uniqueCommands() {
+            return [...new Set(this.samples.map(s => s.command).filter(Boolean))].sort();
+        },
+        
+        get uniqueInputTypes() {
+            return [...new Set(this.samples.map(s => s.input_type).filter(Boolean))].sort();
+        },
+        
+        get totalPages() {
+            return Math.ceil(this.filteredSamples.length / this.samplesPerPage);
+        },
+        
+        get visiblePages() {
+            const total = this.totalPages;
+            const current = this.currentPage;
+            const delta = 2;
+            
+            let range = [];
+            let rangeWithDots = [];
+            
+            for (let i = Math.max(2, current - delta); i <= Math.min(total - 1, current + delta); i++) {
+                range.push(i);
+            }
+            
+            if (current - delta > 2) {
+                rangeWithDots.push(1, '...');
+            } else {
+                rangeWithDots.push(1);
+            }
+            
+            rangeWithDots.push(...range);
+            
+            if (current + delta < total - 1) {
+                rangeWithDots.push('...', total);
+            } else if (total > 1) {
+                rangeWithDots.push(total);
+            }
+            
+            return rangeWithDots.filter((item, index, arr) => arr.indexOf(item) === index);
+        },
+        
+        formatBytes(bytes) {
+            if (!bytes) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+        },
+        
+        formatRelativeTime(timestamp) {
+            const date = new Date(timestamp);
+            const now = new Date();
+            const diff = now - date;
+            
+            if (diff < 60000) return 'just now';
+            if (diff < 3600000) return Math.floor(diff / 60000) + 'm ago';
+            if (diff < 86400000) return Math.floor(diff / 3600000) + 'h ago';
+            if (diff < 604800000) return Math.floor(diff / 86400000) + 'd ago';
+            return date.toLocaleDateString();
+        }
+    }
+}
+
+// Update pagination when page changes
+document.addEventListener('alpine:init', () => {
+    Alpine.effect(() => {
+        const component = Alpine.raw(window.ioSamplesComponent);
+        if (component && component.currentPage) {
+            component.updatePagination();
+        }
+    });
+});
+</script>
+{% endblock %} 

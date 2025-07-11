@@ -88,6 +88,11 @@ class SaylessWebUI:
             """Analytics and usage tracking page"""
             return render_template('analytics.html')
         
+        @self.app.route('/io-samples')
+        def io_samples_page():
+            """Input/Output samples page"""
+            return render_template('io-samples.html')
+        
         @self.app.route('/api/analytics/overview')
         def api_analytics_overview():
             """Get usage analytics overview"""
@@ -95,6 +100,18 @@ class SaylessWebUI:
             tracker = get_tracker()
             stats = tracker.get_usage_stats(days)
             return jsonify(stats)
+        
+        @self.app.route('/api/analytics/io-samples')
+        def api_analytics_io_samples():
+            """Get input/output samples for detailed analysis"""
+            days = request.args.get('days', 30, type=int)
+            limit = request.args.get('limit', 100, type=int)
+            command = request.args.get('command', None)
+            input_type = request.args.get('input_type', None)
+            
+            tracker = get_tracker()
+            samples = tracker.get_detailed_io_samples(days, limit, command, input_type)
+            return jsonify({'samples': samples})
         
         @self.app.route('/api/analytics/command/<command>')
         def api_analytics_command(command):
