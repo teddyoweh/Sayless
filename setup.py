@@ -6,12 +6,12 @@ with open("README.md", "r", encoding="utf-8") as fh:
 setup(
     name="sayless",
     version="0.2.0",
-    author="Teddy",
+    author="Clinton",
     author_email="",  # Add your email
     description="AI Git Copilot / Autopilot",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/teddyoweh/sayless",
+    url="https://github.com/Clintonoweh/sayless",
     packages=find_packages(),
     classifiers=[
         "Development Status :: 4 - Beta",
