@@ -1,0 +1,879 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Sayless{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gradient-to-br from-background via-background to-muted/20" x-data="dashboard()">
+    <!-- Header Section -->
+    <div class="px-6 py-8">
+        <div class="max-w-7xl mx-auto">
+            <!-- Welcome Banner -->
+            <div class="relative overflow-hidden rounded-2xl bg-gradient-to-r from-primary via-primary to-primary/80 p-8 text-primary-foreground mb-8">
+                <div class="absolute inset-0 bg-grid-white/10 bg-[size:20px_20px] opacity-20"></div>
+                <div class="relative">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h1 class="text-3xl font-bold mb-2">Welcome back to Sayless</h1>
+                            <p class="text-primary-foreground/80 text-lg">Your AI-powered Git copilot is ready to supercharge your workflow</p>
+                        </div>
+                        <div class="hidden md:flex items-center space-x-2">
+                            <div class="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center">
+                                <i data-lucide="zap" class="w-6 h-6"></i>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Quick Setup Progress -->
+                    <div class="mt-6 bg-white/10 rounded-lg p-4 backdrop-blur-sm">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-sm font-medium">Setup Progress</span>
+                            <span class="text-sm" x-text="getSetupProgress() + '%'"></span>
+                        </div>
+                        <div class="w-full bg-white/20 rounded-full h-2">
+                            <div class="bg-white rounded-full h-2 transition-all duration-500" :style="`width: ${getSetupProgress()}%`"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Dashboard Content -->
+    <div class="px-6 pb-8">
+        <div class="max-w-7xl mx-auto">
+            <!-- Status Cards Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+                <!-- AI Provider -->
+                <div class="group relative overflow-hidden rounded-xl bg-card border border-border p-6 hover:shadow-lg transition-all duration-300">
+                    <div class="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-purple-600/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                    <div class="relative">
+                        <div class="flex items-start justify-between mb-4">
+                            <div class="w-10 h-10 rounded-lg bg-white border border-gray-200 flex items-center justify-center p-1">
+                                {% if status.provider == 'openai' %}
+                                    <img src="{{ url_for('static', filename='openailogo.png') }}" alt="OpenAI" class="w-6 h-6 object-contain">
+                                {% elif status.provider == 'claude' %}
+                                    <img src="{{ url_for('static', filename='claudelogo.png') }}" alt="Claude" class="w-6 h-6 object-contain">
+                                {% else %}
+                                    <i data-lucide="brain" class="w-5 h-5 text-purple-600"></i>
+                                {% endif %}
+                            </div>
+                            <div class="flex items-center space-x-1">
+                                <div class="w-2 h-2 rounded-full" :class="{
+                                    'bg-green-500': providerWorking,
+                                    'bg-red-500': !providerWorking && providerConfigured,
+                                    'bg-yellow-500': !providerConfigured
+                                }"></div>
+                            </div>
+                        </div>
+                        <h3 class="font-semibold text-card-foreground mb-1">AI Provider</h3>
+                        <p class="text-sm text-muted-foreground mb-3">{{ status.provider|title }} • {{ status.model }}</p>
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-medium px-2 py-1 rounded-full" :class="{
+                                'bg-green-100 text-green-700': providerWorking,
+                                'bg-red-100 text-red-700': !providerWorking && providerConfigured,
+                                'bg-yellow-100 text-yellow-700': !providerConfigured
+                            }" x-text="getProviderStatus()"></span>
+                            <button class="text-xs text-primary hover:text-primary/80" onclick="window.location.href='/settings'">Configure</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- GitHub -->
+                <div class="group relative overflow-hidden rounded-xl bg-card border border-border p-6 hover:shadow-lg transition-all duration-300">
+                    <div class="absolute inset-0 bg-gradient-to-br from-gray-700/5 to-gray-800/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                    <div class="relative">
+                        <div class="flex items-start justify-between mb-4">
+                            <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-gray-700 to-gray-800 flex items-center justify-center">
+                                <i data-lucide="github" class="w-5 h-5 text-white"></i>
+                            </div>
+                            <div class="w-2 h-2 rounded-full" :class="{
+                                'bg-green-500': githubWorking,
+                                'bg-red-500': !githubWorking && githubConfigured,
+                                'bg-yellow-500': !githubConfigured
+                            }"></div>
+                        </div>
+                        <h3 class="font-semibold text-card-foreground mb-1">GitHub</h3>
+                        <p class="text-sm text-muted-foreground mb-3">Repository integration</p>
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-medium px-2 py-1 rounded-full" :class="{
+                                'bg-green-100 text-green-700': githubWorking,
+                                'bg-red-100 text-red-700': !githubWorking && githubConfigured,
+                                'bg-yellow-100 text-yellow-700': !githubConfigured
+                            }" x-text="getGitHubStatus()"></span>
+                            <button class="text-xs text-primary hover:text-primary/80" onclick="window.location.href='/settings'">Setup</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Git Repository -->
+                <div class="group relative overflow-hidden rounded-xl bg-card border border-border p-6 hover:shadow-lg transition-all duration-300">
+                    <div class="absolute inset-0 bg-gradient-to-br from-orange-500/5 to-red-500/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                    <div class="relative">
+                        <div class="flex items-start justify-between mb-4">
+                            <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center">
+                                <i data-lucide="git-branch" class="w-5 h-5 text-white"></i>
+                            </div>
+                            <div class="w-2 h-2 rounded-full {{ 'bg-green-500' if status.git_repo else 'bg-red-500' }}"></div>
+                        </div>
+                        <h3 class="font-semibold text-card-foreground mb-1">Repository</h3>
+                        <p class="text-sm text-muted-foreground mb-3">Local git status</p>
+                        <div class="flex items-center justify-between">
+                            {% if status.git_repo %}
+                                {% if status.git_status and status.git_status.clean %}
+                                    <span class="text-xs font-medium px-2 py-1 rounded-full bg-green-100 text-green-700">Clean</span>
+                                {% elif status.git_status %}
+                                    <span class="text-xs font-medium px-2 py-1 rounded-full bg-yellow-100 text-yellow-700">{{ status.git_status.changes }} changes</span>
+                                {% else %}
+                                    <span class="text-xs font-medium px-2 py-1 rounded-full bg-blue-100 text-blue-700">Active</span>
+                                {% endif %}
+                            {% else %}
+                                <span class="text-xs font-medium px-2 py-1 rounded-full bg-red-100 text-red-700">No repo</span>
+                            {% endif %}
+                            <button class="text-xs text-primary hover:text-primary/80">View</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Ollama -->
+                <div class="group relative overflow-hidden rounded-xl bg-card border border-border p-6 hover:shadow-lg transition-all duration-300">
+                    <div class="absolute inset-0 bg-gradient-to-br from-green-500/5 to-teal-500/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                    <div class="relative">
+                        <div class="flex items-start justify-between mb-4">
+                            <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-green-500 to-teal-500 flex items-center justify-center">
+                                <i data-lucide="cpu" class="w-5 h-5 text-white"></i>
+                            </div>
+                            <div class="w-2 h-2 rounded-full {{ 'bg-green-500' if status.ollama_available else 'bg-red-500' }}"></div>
+                        </div>
+                        <h3 class="font-semibold text-card-foreground mb-1">Ollama</h3>
+                        <p class="text-sm text-muted-foreground mb-3">Local AI models</p>
+                        <div class="flex items-center justify-between">
+                            {% if status.ollama_available %}
+                                <span class="text-xs font-medium px-2 py-1 rounded-full bg-green-100 text-green-700">{{ status.ollama_models|length }} models</span>
+                            {% else %}
+                                <span class="text-xs font-medium px-2 py-1 rounded-full bg-red-100 text-red-700">Offline</span>
+                            {% endif %}
+                            <button class="text-xs text-primary hover:text-primary/80" onclick="window.location.href='/help'">Learn</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Actions Section -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+                <!-- Primary Actions -->
+                <div class="lg:col-span-2">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-xl font-semibold text-foreground">Quick Actions</h2>
+                        <button class="text-sm text-muted-foreground hover:text-foreground">View all</button>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <!-- AI Setup -->
+                        <div class="group relative overflow-hidden rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 p-6 text-white cursor-pointer hover:shadow-xl transition-all duration-300" onclick="window.location.href='/settings'">
+                            <div class="absolute inset-0 bg-black/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                            <div class="relative">
+                                <div class="flex items-center justify-between mb-3">
+                                    <div class="w-10 h-10 rounded-lg bg-white/30 flex items-center justify-center p-1">
+                                        {% if status.provider == 'openai' %}
+                                            <img src="{{ url_for('static', filename='openailogo.png') }}" alt="OpenAI" class="w-6 h-6 object-contain">
+                                        {% elif status.provider == 'claude' %}
+                                            <img src="{{ url_for('static', filename='claudelogo.png') }}" alt="Claude" class="w-6 h-6 object-contain">
+                                        {% else %}
+                                            <i data-lucide="brain" class="w-5 h-5"></i>
+                                        {% endif %}
+                                    </div>
+                                    <i data-lucide="arrow-right" class="w-4 h-4 opacity-60 group-hover:opacity-100 group-hover:translate-x-1 transition-all"></i>
+                                </div>
+                                <h3 class="font-semibold mb-1">Configure AI</h3>
+                                <p class="text-sm text-white/80">Set up your AI provider for intelligent commits</p>
+                            </div>
+                        </div>
+
+                        <!-- GitHub Setup -->
+                        <div class="group relative overflow-hidden rounded-xl bg-gradient-to-br from-gray-700 to-gray-900 p-6 text-white cursor-pointer hover:shadow-xl transition-all duration-300" onclick="window.location.href='/settings'">
+                            <div class="absolute inset-0 bg-black/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                            <div class="relative">
+                                <div class="flex items-center justify-between mb-3">
+                                    <div class="w-10 h-10 rounded-lg bg-white/20 flex items-center justify-center">
+                                        <i data-lucide="github" class="w-5 h-5"></i>
+                                    </div>
+                                    <i data-lucide="arrow-right" class="w-4 h-4 opacity-60 group-hover:opacity-100 group-hover:translate-x-1 transition-all"></i>
+                                </div>
+                                <h3 class="font-semibold mb-1">Connect GitHub</h3>
+                                <p class="text-sm text-white/80">Enable PR creation and repository management</p>
+                            </div>
+                        </div>
+
+                        <!-- Test Connection -->
+                        <div class="group relative overflow-hidden rounded-xl bg-card border border-border p-6 cursor-pointer hover:shadow-lg transition-all duration-300" @click="testProvider()">
+                            <div class="absolute inset-0 bg-green-500/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                            <div class="relative">
+                                <div class="flex items-center justify-between mb-3">
+                                    <div class="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
+                                        <i data-lucide="check-circle" class="w-5 h-5 text-green-600" x-show="!testing"></i>
+                                        <i data-lucide="loader-2" class="w-5 h-5 text-green-600 animate-spin" x-show="testing"></i>
+                                    </div>
+                                    <i data-lucide="arrow-right" class="w-4 h-4 text-muted-foreground group-hover:text-foreground group-hover:translate-x-1 transition-all"></i>
+                                </div>
+                                <h3 class="font-semibold text-card-foreground mb-1" x-text="testing ? 'Testing...' : 'Test Connection'"></h3>
+                                <p class="text-sm text-muted-foreground">Verify your AI provider connection</p>
+                            </div>
+                        </div>
+
+                        <!-- View Help -->
+                        <div class="group relative overflow-hidden rounded-xl bg-card border border-border p-6 cursor-pointer hover:shadow-lg transition-all duration-300" onclick="window.location.href='/help'">
+                            <div class="absolute inset-0 bg-amber-500/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                            <div class="relative">
+                                <div class="flex items-center justify-between mb-3">
+                                    <div class="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center">
+                                        <i data-lucide="book-open" class="w-5 h-5 text-amber-600"></i>
+                                    </div>
+                                    <i data-lucide="arrow-right" class="w-4 h-4 text-muted-foreground group-hover:text-foreground group-hover:translate-x-1 transition-all"></i>
+                                </div>
+                                <h3 class="font-semibold text-card-foreground mb-1">Browse Commands</h3>
+                                <p class="text-sm text-muted-foreground">Learn all available Sayless commands</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Recent Activity & Git Status -->
+                    <div class="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <!-- Recent Activity -->
+                        <div class="rounded-xl bg-card border border-border p-6">
+                            <div class="flex items-center justify-between mb-4">
+                                <h3 class="font-semibold text-card-foreground">Recent Activity</h3>
+                                <i data-lucide="activity" class="w-4 h-4 text-muted-foreground"></i>
+                            </div>
+                            <div class="space-y-3" x-show="!analyticsLoading">
+                                <template x-for="activity in recentActivity.slice(0, 3)" :key="activity.timestamp">
+                                    <div class="flex items-center justify-between p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors">
+                                        <div class="flex items-center space-x-3">
+                                            <div class="w-2 h-2 rounded-full" :class="{
+                                                'bg-green-500': activity.success,
+                                                'bg-red-500': !activity.success
+                                            }"></div>
+                                            <div>
+                                                <p class="text-sm font-medium text-card-foreground" x-text="activity.command"></p>
+                                                <p class="text-xs text-muted-foreground" x-text="formatRelativeTime(activity.timestamp)"></p>
+                                            </div>
+                                        </div>
+                                        <div class="text-right">
+                                            <p class="text-xs text-muted-foreground" x-text="formatTime(activity.execution_time)"></p>
+                                            <span class="text-xs px-2 py-1 rounded-full" :class="{
+                                                'bg-green-100 text-green-700': activity.success,
+                                                'bg-red-100 text-red-700': !activity.success
+                                            }" x-text="activity.success ? 'Success' : 'Failed'"></span>
+                                        </div>
+                                    </div>
+                                </template>
+                                <div x-show="recentActivity.length === 0" class="text-center py-6 text-muted-foreground">
+                                    <i data-lucide="zap" class="w-8 h-8 mx-auto mb-2 opacity-50"></i>
+                                    <p class="text-sm">No recent activity</p>
+                                    <p class="text-xs">Start using commands to see activity here</p>
+                                </div>
+                            </div>
+                            <div x-show="analyticsLoading" class="flex items-center justify-center py-6">
+                                <i data-lucide="loader-2" class="w-4 h-4 animate-spin text-muted-foreground"></i>
+                            </div>
+                        </div>
+
+                        <!-- Git Repository Status -->
+                        <div class="rounded-xl bg-card border border-border p-6">
+                            <div class="flex items-center justify-between mb-4">
+                                <h3 class="font-semibold text-card-foreground">Repository Status</h3>
+                                <i data-lucide="git-branch" class="w-4 h-4 text-muted-foreground"></i>
+                            </div>
+                            {% if status.git_repo %}
+                                <div class="space-y-3">
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-sm text-muted-foreground">Current Branch</span>
+                                        <code class="text-sm bg-muted px-2 py-1 rounded font-mono">{{ status.git_status.branch if status.git_status else 'main' }}</code>
+                                    </div>
+                                    {% if status.git_status %}
+                                        <div class="flex items-center justify-between">
+                                            <span class="text-sm text-muted-foreground">Status</span>
+                                            {% if status.git_status.clean %}
+                                                <span class="text-sm px-2 py-1 rounded-full bg-green-100 text-green-700">Clean</span>
+                                            {% else %}
+                                                <span class="text-sm px-2 py-1 rounded-full bg-yellow-100 text-yellow-700">{{ status.git_status.changes }} changes</span>
+                                            {% endif %}
+                                        </div>
+                                        {% if not status.git_status.clean %}
+                                            <div class="pt-3 border-t space-y-2">
+                                                <div class="flex items-center justify-between text-sm">
+                                                    <span class="text-muted-foreground">Modified files</span>
+                                                    <span class="text-yellow-600 font-medium">{{ status.git_status.changes }}</span>
+                                                </div>
+                                            </div>
+                                        {% endif %}
+                                    {% endif %}
+                                    <div class="pt-3 border-t">
+                                        <button onclick="copyToClipboard('sayless g -a')" class="w-full text-xs text-center py-2 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg transition-colors">
+                                            Quick Commit (sl g -a)
+                                        </button>
+                                    </div>
+                                </div>
+                            {% else %}
+                                <div class="text-center py-6 text-muted-foreground">
+                                    <i data-lucide="folder-x" class="w-8 h-8 mx-auto mb-2 opacity-50"></i>
+                                    <p class="text-sm">No Git repository</p>
+                                    <p class="text-xs">Navigate to a Git repository to see status</p>
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- AI Usage Preview -->
+                    <div class="mt-6 rounded-xl bg-gradient-to-br from-indigo-50 via-white to-purple-50 border border-indigo-100 p-6">
+                        <div class="flex items-center justify-between mb-4">
+                            <div>
+                                <h3 class="font-semibold text-card-foreground">AI Insights</h3>
+                                <p class="text-xs text-muted-foreground">Your intelligent workflow patterns</p>
+                            </div>
+                            <button onclick="window.location.href='/analytics'" class="text-xs text-indigo-600 hover:text-indigo-800 font-medium">
+                                View Dashboard →
+                            </button>
+                        </div>
+                        <div x-show="!analyticsLoading" class="grid grid-cols-3 gap-4 mb-4">
+                            <div class="text-center p-3 rounded-lg bg-white/60 border border-white/40">
+                                <p class="text-lg font-bold text-indigo-600" x-text="analytics.total_commands || 0"></p>
+                                <p class="text-xs text-muted-foreground">Commands</p>
+                            </div>
+                            <div class="text-center p-3 rounded-lg bg-white/60 border border-white/40">
+                                <p class="text-lg font-bold text-emerald-600" x-text="Math.round((analytics.success_rate || 0) * 100) + '%'"></p>
+                                <p class="text-xs text-muted-foreground">Success</p>
+                            </div>
+                            <div class="text-center p-3 rounded-lg bg-white/60 border border-white/40">
+                                <p class="text-lg font-bold text-purple-600" x-text="(analytics.input_output_analytics?.summary?.total_commands_with_io || 0)"></p>
+                                <p class="text-xs text-muted-foreground">AI Ops</p>
+                            </div>
+                        </div>
+                        <div x-show="analyticsLoading" class="flex items-center justify-center py-6">
+                            <i data-lucide="loader-2" class="w-4 h-4 animate-spin text-indigo-500"></i>
+                        </div>
+                        <div class="text-center">
+                            <p class="text-xs text-muted-foreground mb-2">Most used: <span class="font-medium" x-text="getTopCommand(analytics)"></span></p>
+                            <div class="w-full bg-indigo-100 rounded-full h-2">
+                                <div class="bg-gradient-to-r from-indigo-500 to-purple-500 h-2 rounded-full" :style="`width: ${Math.min((analytics.success_rate || 0) * 100, 100)}%`"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Pro Tips -->
+                    <div class="mt-6 rounded-xl bg-gradient-to-br from-amber-50 via-white to-orange-50 border border-amber-100 p-6">
+                        <div class="flex items-center justify-between mb-4">
+                            <div>
+                                <h3 class="font-semibold text-card-foreground flex items-center space-x-2">
+                                    <i data-lucide="lightbulb" class="w-4 h-4 text-amber-500"></i>
+                                    <span>Pro Tips</span>
+                                </h3>
+                                <p class="text-xs text-muted-foreground">Boost your productivity</p>
+                            </div>
+                        </div>
+                        <div class="space-y-3">
+                            <div class="p-3 rounded-lg bg-white/60 border border-white/40">
+                                <p class="text-sm font-medium text-card-foreground mb-1">💡 Quick Aliases</p>
+                                <p class="text-xs text-muted-foreground">Use <code class="bg-amber-100 px-1 rounded">sl</code> instead of <code class="bg-amber-100 px-1 rounded">sayless</code> for faster commands</p>
+                            </div>
+                            <div class="p-3 rounded-lg bg-white/60 border border-white/40">
+                                <p class="text-sm font-medium text-card-foreground mb-1">🚀 Auto-stage</p>
+                                <p class="text-xs text-muted-foreground">Use <code class="bg-amber-100 px-1 rounded">sl g -a</code> to stage all changes and commit in one go</p>
+                            </div>
+                            <div class="p-3 rounded-lg bg-white/60 border border-white/40">
+                                <p class="text-sm font-medium text-card-foreground mb-1">🔍 Smart Search</p>
+                                <p class="text-xs text-muted-foreground">Find commits by meaning: <code class="bg-amber-100 px-1 rounded">sl search "fix bug"</code></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Sidebar -->
+                <div class="space-y-6">
+                    <!-- Common Workflows -->
+                    <div class="rounded-xl bg-card border border-border p-6">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="font-semibold text-card-foreground">Common Workflows</h3>
+                            <i data-lucide="workflow" class="w-4 h-4 text-muted-foreground"></i>
+                        </div>
+                        <div class="space-y-3">
+                            <!-- Quick Commit -->
+                            <div class="group relative overflow-hidden rounded-lg bg-gradient-to-r from-emerald-50 to-emerald-100 border border-emerald-200 p-3 cursor-pointer hover:shadow-sm transition-all" onclick="copyToClipboard('sayless g -a')">
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center space-x-2">
+                                        <div class="w-6 h-6 rounded bg-emerald-500 flex items-center justify-center">
+                                            <i data-lucide="zap" class="w-3 h-3 text-white"></i>
+                                        </div>
+                                        <div>
+                                            <p class="text-xs font-medium text-emerald-800">Quick Commit</p>
+                                            <p class="text-xs text-emerald-600">Auto-stage & commit</p>
+                                        </div>
+                                    </div>
+                                    <code class="text-xs bg-emerald-200 text-emerald-800 px-2 py-1 rounded font-mono">sl g -a</code>
+                                </div>
+                            </div>
+
+                            <!-- PR Workflow -->
+                            <div class="group relative overflow-hidden rounded-lg bg-gradient-to-r from-blue-50 to-blue-100 border border-blue-200 p-3 cursor-pointer hover:shadow-sm transition-all" onclick="copyToClipboard('sayless branch -g && sayless g -a && sayless pr create')">
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center space-x-2">
+                                        <div class="w-6 h-6 rounded bg-blue-500 flex items-center justify-center">
+                                            <i data-lucide="git-pull-request" class="w-3 h-3 text-white"></i>
+                                        </div>
+                                        <div>
+                                            <p class="text-xs font-medium text-blue-800">Full PR Flow</p>
+                                            <p class="text-xs text-blue-600">Branch + commit + PR</p>
+                                        </div>
+                                    </div>
+                                    <div class="text-right">
+                                        <p class="text-xs text-blue-600">3 steps</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Code Review -->
+                            <div class="group relative overflow-hidden rounded-lg bg-gradient-to-r from-purple-50 to-purple-100 border border-purple-200 p-3 cursor-pointer hover:shadow-sm transition-all" onclick="copyToClipboard('sayless review-enhanced --current --type detailed')">
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center space-x-2">
+                                        <div class="w-6 h-6 rounded bg-purple-500 flex items-center justify-center">
+                                            <i data-lucide="eye" class="w-3 h-3 text-white"></i>
+                                        </div>
+                                        <div>
+                                            <p class="text-xs font-medium text-purple-800">AI Review</p>
+                                            <p class="text-xs text-purple-600">Detailed analysis</p>
+                                        </div>
+                                    </div>
+                                    <code class="text-xs bg-purple-200 text-purple-800 px-2 py-1 rounded font-mono">sl review</code>
+                                </div>
+                            </div>
+
+                            <!-- Dependencies -->
+                            <div class="group relative overflow-hidden rounded-lg bg-gradient-to-r from-orange-50 to-orange-100 border border-orange-200 p-3 cursor-pointer hover:shadow-sm transition-all" onclick="copyToClipboard('sayless deps analyze --auto-fix')">
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center space-x-2">
+                                        <div class="w-6 h-6 rounded bg-orange-500 flex items-center justify-center">
+                                            <i data-lucide="package" class="w-3 h-3 text-white"></i>
+                                        </div>
+                                        <div>
+                                            <p class="text-xs font-medium text-orange-800">Fix Dependencies</p>
+                                            <p class="text-xs text-orange-600">Auto-detect & add</p>
+                                        </div>
+                                    </div>
+                                    <div class="text-right">
+                                        <p class="text-xs text-orange-600">Auto-fix</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Quick Commands -->
+                    <div class="rounded-xl bg-card border border-border p-6">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="font-semibold text-card-foreground">Quick Commands</h3>
+                            <i data-lucide="terminal" class="w-4 h-4 text-muted-foreground"></i>
+                        </div>
+                        <div class="space-y-2">
+                            <div class="flex items-center justify-between p-2 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors" onclick="copyToClipboard('sayless search')">
+                                <div class="flex items-center space-x-2">
+                                    <i data-lucide="search" class="w-3 h-3 text-muted-foreground"></i>
+                                    <span class="text-xs text-card-foreground">Search commits</span>
+                                </div>
+                                <code class="text-xs font-mono text-muted-foreground">sl search</code>
+                            </div>
+                            <div class="flex items-center justify-between p-2 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors" onclick="copyToClipboard('sayless switch')">
+                                <div class="flex items-center space-x-2">
+                                    <i data-lucide="repeat" class="w-3 h-3 text-muted-foreground"></i>
+                                    <span class="text-xs text-card-foreground">Switch provider</span>
+                                </div>
+                                <code class="text-xs font-mono text-muted-foreground">sl switch</code>
+                            </div>
+                            <div class="flex items-center justify-between p-2 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors" onclick="copyToClipboard('sayless bulk-review')">
+                                <div class="flex items-center space-x-2">
+                                    <i data-lucide="layers" class="w-3 h-3 text-muted-foreground"></i>
+                                    <span class="text-xs text-card-foreground">Bulk review</span>
+                                </div>
+                                <code class="text-xs font-mono text-muted-foreground">sl bulk-review</code>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Usage Analytics -->
+                    <div class="rounded-xl bg-card border border-border p-6">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="font-semibold text-card-foreground">Usage Analytics</h3>
+                            <button onclick="window.location.href='/analytics'" class="text-xs text-primary hover:text-primary/80">
+                                View all
+                            </button>
+                        </div>
+                        <div class="space-y-3">
+                            <div x-show="analyticsLoading" class="flex items-center justify-center py-4">
+                                <i data-lucide="loader-2" class="w-4 h-4 animate-spin text-muted-foreground"></i>
+                            </div>
+                            <div x-show="!analyticsLoading" class="space-y-3">
+                                <div class="flex justify-between text-sm">
+                                    <span class="text-muted-foreground">Total Commands</span>
+                                    <span class="font-medium text-foreground" x-text="analytics.total_commands || 0"></span>
+                                </div>
+                                <div class="flex justify-between text-sm">
+                                    <span class="text-muted-foreground">Success Rate</span>
+                                    <span class="font-medium text-foreground" x-text="Math.round((analytics.success_rate || 0) * 100) + '%'"></span>
+                                </div>
+                                <div class="flex justify-between text-sm">
+                                    <span class="text-muted-foreground">Top Command</span>
+                                    <span class="font-medium text-foreground text-xs" x-text="getTopCommand(analytics)"></span>
+                                </div>
+                                <div class="pt-2 border-t">
+                                    <button onclick="window.location.href='/analytics'" class="w-full text-xs text-center py-2 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg transition-colors">
+                                        View Full Analytics Dashboard
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- System Stats -->
+                    <div class="rounded-xl bg-card border border-border p-6">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="font-semibold text-card-foreground">System Info</h3>
+                            <i data-lucide="info" class="w-4 h-4 text-muted-foreground"></i>
+                        </div>
+                        <div class="space-y-3">
+                            <div class="flex justify-between text-sm">
+                                <span class="text-muted-foreground">Version</span>
+                                <span class="font-medium text-foreground">{{ status.version }}</span>
+                            </div>
+                            <div class="flex justify-between text-sm">
+                                <span class="text-muted-foreground">Provider</span>
+                                <span class="font-medium text-foreground">{{ status.provider|title }}</span>
+                            </div>
+                            <div class="flex justify-between text-sm">
+                                <span class="text-muted-foreground">Model</span>
+                                <span class="font-medium text-foreground">{{ status.model }}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Quick Test Result -->
+                    <div x-show="testResult" x-transition class="rounded-xl border p-4" :class="{
+                        'bg-green-50 border-green-200': testResult && testResult.success,
+                        'bg-red-50 border-red-200': testResult && !testResult.success
+                    }">
+                        <div class="flex items-center space-x-2">
+                            <i data-lucide="check-circle" class="w-4 h-4" :class="{
+                                'text-green-600': testResult && testResult.success,
+                                'text-red-600': testResult && !testResult.success
+                            }" x-show="testResult && testResult.success"></i>
+                            <i data-lucide="x-circle" class="w-4 h-4 text-red-600" x-show="testResult && !testResult.success"></i>
+                            <p class="text-sm font-medium" :class="{
+                                'text-green-800': testResult && testResult.success,
+                                'text-red-800': testResult && !testResult.success
+                            }" x-text="testResult ? testResult.message : ''"></p>
+                        </div>
+                    </div>
+                </div>
+                        </div>
+
+            <!-- Popular Workflows Section -->
+            <div class="mt-8">
+                <div class="flex items-center justify-between mb-6">
+                    <div>
+                        <h2 class="text-xl font-semibold text-foreground">Popular Workflows</h2>
+                        <p class="text-sm text-muted-foreground">Master these patterns to supercharge your development</p>
+                    </div>
+                    <button class="text-sm text-primary hover:text-primary/80" onclick="window.location.href='/help'">View all commands</button>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <!-- Lightning Fast Commit -->
+                    <div class="group relative overflow-hidden rounded-xl bg-gradient-to-br from-emerald-500 via-emerald-600 to-emerald-700 p-6 text-white hover:shadow-2xl hover:scale-105 transition-all duration-300 cursor-pointer" onclick="copyToClipboard('sl g -a')">
+                        <div class="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                        <div class="relative">
+                            <div class="flex items-center justify-between mb-4">
+                                <div class="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center">
+                                    <i data-lucide="zap" class="w-6 h-6"></i>
+                                </div>
+                                <span class="text-xs bg-white/20 px-2 py-1 rounded-full">1 command</span>
+                            </div>
+                            <h3 class="text-lg font-semibold mb-2">Lightning Commit</h3>
+                            <p class="text-sm text-emerald-100 mb-4">Auto-stage all changes and generate an intelligent commit message</p>
+                            <div class="bg-black/20 rounded-lg p-3">
+                                <code class="text-sm font-mono">sayless g -a</code>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Complete PR Flow -->
+                    <div class="group relative overflow-hidden rounded-xl bg-gradient-to-br from-blue-500 via-blue-600 to-indigo-700 p-6 text-white hover:shadow-2xl hover:scale-105 transition-all duration-300 cursor-pointer">
+                        <div class="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                        <div class="relative">
+                            <div class="flex items-center justify-between mb-4">
+                                <div class="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center">
+                                    <i data-lucide="git-pull-request" class="w-6 h-6"></i>
+                                </div>
+                                <span class="text-xs bg-white/20 px-2 py-1 rounded-full">3 steps</span>
+                            </div>
+                            <h3 class="text-lg font-semibold mb-2">Full PR Pipeline</h3>
+                            <p class="text-sm text-blue-100 mb-4">Create branch, commit changes, and open a pull request</p>
+                            <div class="space-y-2 text-xs">
+                                <div class="bg-black/20 rounded p-2">
+                                    <code class="font-mono">1. sl branch -g</code>
+                                </div>
+                                <div class="bg-black/20 rounded p-2">
+                                    <code class="font-mono">2. sl g -a</code>
+                                </div>
+                                <div class="bg-black/20 rounded p-2">
+                                    <code class="font-mono">3. sl pr create</code>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- AI Code Review -->
+                    <div class="group relative overflow-hidden rounded-xl bg-gradient-to-br from-purple-500 via-purple-600 to-pink-700 p-6 text-white hover:shadow-2xl hover:scale-105 transition-all duration-300 cursor-pointer" onclick="copyToClipboard('sl review-enhanced --current --type detailed')">
+                        <div class="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                        <div class="relative">
+                            <div class="flex items-center justify-between mb-4">
+                                <div class="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center">
+                                    <i data-lucide="eye" class="w-6 h-6"></i>
+                                </div>
+                                <span class="text-xs bg-white/20 px-2 py-1 rounded-full">AI powered</span>
+                            </div>
+                            <h3 class="text-lg font-semibold mb-2">Smart Code Review</h3>
+                            <p class="text-sm text-purple-100 mb-4">Get detailed AI analysis with security and performance insights</p>
+                            <div class="bg-black/20 rounded-lg p-3">
+                                <code class="text-sm font-mono">sayless review --type detailed</code>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Dependency Doctor -->
+                    <div class="group relative overflow-hidden rounded-xl bg-gradient-to-br from-orange-500 via-red-500 to-pink-600 p-6 text-white hover:shadow-2xl hover:scale-105 transition-all duration-300 cursor-pointer" onclick="copyToClipboard('sl deps analyze --auto-fix')">
+                        <div class="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                        <div class="relative">
+                            <div class="flex items-center justify-between mb-4">
+                                <div class="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center">
+                                    <i data-lucide="package" class="w-6 h-6"></i>
+                                </div>
+                                <span class="text-xs bg-white/20 px-2 py-1 rounded-full">Auto-fix</span>
+                            </div>
+                            <h3 class="text-lg font-semibold mb-2">Dependency Doctor</h3>
+                            <p class="text-sm text-orange-100 mb-4">Detect missing packages from imports and auto-add them</p>
+                            <div class="bg-black/20 rounded-lg p-3">
+                                <code class="text-sm font-mono">sayless deps analyze --auto-fix</code>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Semantic Search -->
+                    <div class="group relative overflow-hidden rounded-xl bg-gradient-to-br from-teal-500 via-cyan-600 to-blue-700 p-6 text-white hover:shadow-2xl hover:scale-105 transition-all duration-300 cursor-pointer" onclick="copyToClipboard('sl search \"authentication\"')">
+                        <div class="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                        <div class="relative">
+                            <div class="flex items-center justify-between mb-4">
+                                <div class="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center">
+                                    <i data-lucide="search" class="w-6 h-6"></i>
+                                </div>
+                                <span class="text-xs bg-white/20 px-2 py-1 rounded-full">Semantic</span>
+                            </div>
+                            <h3 class="text-lg font-semibold mb-2">Smart Search</h3>
+                            <p class="text-sm text-teal-100 mb-4">Find commits by meaning, not just text matching</p>
+                            <div class="bg-black/20 rounded-lg p-3">
+                                <code class="text-sm font-mono">sayless search "query"</code>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Bulk Operations -->
+                    <div class="group relative overflow-hidden rounded-xl bg-gradient-to-br from-gray-700 via-gray-800 to-gray-900 p-6 text-white hover:shadow-2xl hover:scale-105 transition-all duration-300 cursor-pointer" onclick="copyToClipboard('sl bulk-review --type security --auto-post')">
+                        <div class="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                        <div class="relative">
+                            <div class="flex items-center justify-between mb-4">
+                                <div class="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center">
+                                    <i data-lucide="layers" class="w-6 h-6"></i>
+                                </div>
+                                <span class="text-xs bg-white/20 px-2 py-1 rounded-full">Batch</span>
+                            </div>
+                            <h3 class="text-lg font-semibold mb-2">Bulk Review</h3>
+                            <p class="text-sm text-gray-100 mb-4">Review multiple PRs at once with AI insights</p>
+                            <div class="bg-black/20 rounded-lg p-3">
+                                <code class="text-sm font-mono">sayless bulk-review --type security</code>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pro Tips -->
+                <div class="mt-8 rounded-xl bg-gradient-to-r from-amber-50 via-yellow-50 to-orange-50 border border-amber-200 p-6">
+                    <div class="flex items-start space-x-4">
+                        <div class="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0">
+                            <i data-lucide="lightbulb" class="w-5 h-5 text-amber-600"></i>
+                        </div>
+                        <div>
+                            <h3 class="font-semibold text-amber-900 mb-2">💡 Pro Tips</h3>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-amber-800">
+                                <div class="flex items-start space-x-2">
+                                    <span class="w-1.5 h-1.5 bg-amber-500 rounded-full mt-2 flex-shrink-0"></span>
+                                    <p>Use <code class="bg-amber-200 px-1 rounded font-mono text-xs">sl</code> as a shortcut for <code class="bg-amber-200 px-1 rounded font-mono text-xs">sayless</code></p>
+                                </div>
+                                <div class="flex items-start space-x-2">
+                                    <span class="w-1.5 h-1.5 bg-amber-500 rounded-full mt-2 flex-shrink-0"></span>
+                                    <p>Click any workflow card to copy its command to clipboard</p>
+                                </div>
+                                <div class="flex items-start space-x-2">
+                                    <span class="w-1.5 h-1.5 bg-amber-500 rounded-full mt-2 flex-shrink-0"></span>
+                                    <p>Combine <code class="bg-amber-200 px-1 rounded font-mono text-xs">-a</code> flag to auto-stage changes</p>
+                                </div>
+                                <div class="flex items-start space-x-2">
+                                    <span class="w-1.5 h-1.5 bg-amber-500 rounded-full mt-2 flex-shrink-0"></span>
+                                    <p>Use <code class="bg-amber-200 px-1 rounded font-mono text-xs">--preview</code> to see generated content first</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+ 
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Utility function for copying workflow commands
+function copyToClipboard(text) {
+    if (navigator.clipboard) {
+        navigator.clipboard.writeText(text).then(() => {
+            showNotification(`Copied: ${text}`, 'success');
+        }).catch(() => {
+            fallbackCopy(text);
+        });
+    } else {
+        fallbackCopy(text);
+    }
+}
+
+function fallbackCopy(text) {
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    textArea.style.position = 'fixed';
+    textArea.style.opacity = '0';
+    document.body.appendChild(textArea);
+    textArea.select();
+    try {
+        document.execCommand('copy');
+        showNotification(`Copied: ${text}`, 'success');
+    } catch (err) {
+        showNotification('Failed to copy command', 'error');
+    }
+    document.body.removeChild(textArea);
+}
+
+function dashboard() {
+    return {
+        testing: false,
+        testResult: null,
+        analytics: {},
+        analyticsLoading: true,
+        recentActivity: [],
+        providerConfigured: {{ 'true' if status.openai_configured else 'false' }},
+        providerWorking: {{ 'true' if status.get('openai_working', False) else 'false' }},
+        githubConfigured: {{ 'true' if status.github_configured else 'false' }},
+        githubWorking: {{ 'true' if status.get('github_working', False) else 'false' }},
+        
+        init() {
+            this.loadQuickAnalytics();
+        },
+        
+        getProviderStatus() {
+            if (!this.providerConfigured) return 'Not configured';
+            if (this.providerWorking) return 'Connected';
+            return 'Connection failed';
+        },
+        
+        getGitHubStatus() {
+            if (!this.githubConfigured) return 'Not configured';
+            if (this.githubWorking) return 'Connected';
+            return 'Connection failed';
+        },
+        
+        getSetupProgress() {
+            let progress = 0;
+            if (this.providerConfigured) progress += 33;
+            if (this.providerWorking) progress += 17;
+            if (this.githubConfigured) progress += 33;
+            if (this.githubWorking) progress += 17;
+            return progress;
+        },
+        
+        async testProvider() {
+            this.testing = true;
+            this.testResult = null;
+            
+            try {
+                const response = await api.get('/api/test-connection?provider={{ status.provider }}');
+                this.testResult = response;
+                
+                if (response.success) {
+                    showNotification('Connection test successful!', 'success');
+                    // Update working status if successful
+                    this.providerWorking = true;
+                } else {
+                    showNotification('Connection test failed', 'error');
+                }
+            } catch (error) {
+                this.testResult = { success: false, message: 'Test failed: ' + error.message };
+                showNotification('Test failed', 'error');
+            } finally {
+                this.testing = false;
+            }
+        },
+        
+        async loadQuickAnalytics() {
+            try {
+                const response = await api.get('/api/analytics/overview?days=7');
+                this.analytics = response;
+                
+                // Load recent activity
+                if (response.recent_activity) {
+                    this.recentActivity = response.recent_activity.slice(0, 5);
+                }
+            } catch (error) {
+                console.error('Failed to load analytics:', error);
+                this.analytics = {};
+                this.recentActivity = [];
+            } finally {
+                this.analyticsLoading = false;
+            }
+        },
+        
+        getTopCommand(analytics) {
+            const commands = analytics.most_used_commands || [];
+            return commands.length > 0 ? commands[0].command : 'N/A';
+        },
+        
+        formatRelativeTime(timestamp) {
+            const now = new Date();
+            const time = new Date(timestamp);
+            const diffMs = now - time;
+            const diffMins = Math.floor(diffMs / 60000);
+            const diffHours = Math.floor(diffMs / 3600000);
+            const diffDays = Math.floor(diffMs / 86400000);
+            
+            if (diffMins < 1) return 'just now';
+            if (diffMins < 60) return `${diffMins}m ago`;
+            if (diffHours < 24) return `${diffHours}h ago`;
+            if (diffDays < 7) return `${diffDays}d ago`;
+            return time.toLocaleDateString();
+        },
+        
+        formatTime(timeMs) {
+            if (!timeMs) return 'N/A';
+            if (timeMs < 1000) return `${timeMs}ms`;
+            const seconds = (timeMs / 1000).toFixed(1);
+            return `${seconds}s`;
+        }
+    }
+}
+</script>
+{% endblock %} 

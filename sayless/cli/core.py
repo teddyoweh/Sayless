@@ -14,7 +14,7 @@ from typing import Optional, Tuple
 import os
 import time
 from .config import Config
-from .ai_providers import OllamaProvider, OpenAIProvider
+from .ai_providers import OllamaProvider, OpenAIProvider, ClaudeProvider
 import datetime
 from dateutil.parser import parse as parse_date
 from dateutil.relativedelta import relativedelta
@@ -23,12 +23,14 @@ from .embeddings import CommitEmbeddings
 from .git_ops import create_branch, list_branches, run_git_command
 from .github_ops import create_pr, list_prs, enhanced_review_pr, bulk_review_prs, compare_review_types, show_review_templates, review_current_branch_enhanced
 from .dependency_manager import DependencyManager
+from .web_ui import launch_setup_ui
+from .usage_tracker import track_command_usage, track_command_manual
 
 app = typer.Typer(help="AI Git Copilot / Autopilot")
 console = Console()
 settings = Config()
 
-VALID_PROVIDERS = ["openai", "ollama"]
+VALID_PROVIDERS = ["openai", "claude", "ollama"]
 
 def show_welcome_message():
     """Show a welcome message with the current configuration"""
@@ -73,17 +75,57 @@ def ensure_openai_configured():
         console.print(panel)
         sys.exit(1)
 
+def ensure_claude_configured():
+    """Ensure Claude is properly configured or guide the user"""
+    if settings.get_provider() != 'claude':
+        return
+        
+    api_key = settings.get_claude_api_key()
+    if not api_key:
+        panel = Panel(
+            "[bold red]Claude API Key Required[/bold red]\n\n"
+            "[bold]You have two options:[/bold]\n\n"
+            "[bold cyan]1. Configure Claude (Recommended):[/bold cyan]\n"
+            "   Set your API key using one of these methods:\n"
+            "   [blue]a) Environment variable:[/blue]\n"
+            "      export ANTHROPIC_API_KEY=your_api_key\n"
+            "   [blue]b) Configuration command:[/blue]\n"
+            "      sayless config --claude-key YOUR_API_KEY\n"
+            "   [blue]c) Quick switch command:[/blue]\n"
+            "      sayless switch claude --key YOUR_API_KEY\n\n"
+            "[bold yellow]2. Switch to Ollama (Local AI):[/bold yellow]\n"
+            "   [blue]a) Install Ollama first:[/blue]\n"
+            "      Visit https://ollama.ai\n"
+            "   [blue]b) Then switch to Ollama:[/blue]\n"
+            "      sayless switch ollama",
+            title="Configuration Required",
+            border_style="red"
+        )
+        console.print(panel)
+        sys.exit(1)
+
 def show_config_status():
     """Show current configuration status in a nice table"""
     table = Table(title="Current Configuration", show_header=False, title_style="bold cyan", border_style="cyan")
     provider = settings.get_provider()
     has_openai_key = bool(settings.get_openai_api_key())
+    has_claude_key = bool(settings.get_claude_api_key())
     has_github_token = bool(settings.get_github_token())
     
-    table.add_row("Provider", f"[green]{provider}[/green] {'(default)' if provider == 'openai' else '(local AI)'}")
+    provider_desc = {
+        'openai': '(cloud AI)',
+        'claude': '(Anthropic AI)',
+        'ollama': '(local AI)'
+    }.get(provider, '(unknown)')
+    
+    table.add_row("Provider", f"[green]{provider}[/green] {provider_desc}")
     table.add_row("Model", f"[green]{settings.get_model()}[/green]")
+    
     if provider == 'openai':
         table.add_row("OpenAI API Key", f"[{'green' if has_openai_key else 'red'}]{'configured' if has_openai_key else 'not configured'}[/{'green' if has_openai_key else 'red'}]")
+    elif provider == 'claude':
+        table.add_row("Claude API Key", f"[{'green' if has_claude_key else 'red'}]{'configured' if has_claude_key else 'not configured'}[/{'green' if has_claude_key else 'red'}]")
+    
     table.add_row("GitHub Token", f"[{'green' if has_github_token else 'red'}]{'configured' if has_github_token else 'not configured'}[/{'green' if has_github_token else 'red'}]")
     
     console.print(table)
@@ -178,6 +220,11 @@ def get_ai_provider():
         if not api_key:
             ensure_openai_configured()
         return OpenAIProvider(api_key)
+    elif provider == 'claude':
+        api_key = settings.get_claude_api_key()
+        if not api_key:
+            ensure_claude_configured()
+        return ClaudeProvider(api_key)
     else:
         return OllamaProvider()
 
@@ -396,12 +443,13 @@ async def index_commit(commit_hash: str, progress=None):
         return False
 
 @app.command()
+@track_command_usage("switch")
 def switch(
-    provider: str = typer.Argument(..., help="AI provider to use (openai or ollama)"),
-    key: Optional[str] = typer.Option(None, "--key", help="OpenAI API key (required for OpenAI)"),
+    provider: str = typer.Argument(..., help="AI provider to use (openai, claude, or ollama)"),
+    key: Optional[str] = typer.Option(None, "--key", help="API key (required for OpenAI/Claude)"),
     model: Optional[str] = typer.Option(None, "--model", help="Model to use (optional)"),
 ):
-    """Quickly switch between AI providers (OpenAI/Ollama)"""
+    """Quickly switch between AI providers (OpenAI/Claude/Ollama)"""
     
     # Validate provider
     provider = provider.lower()
@@ -442,7 +490,30 @@ def switch(
             settings.set_openai_api_key(api_key)
             settings.set_provider('openai')
             if not model:
-                settings.set_model('gpt-4')  # Set default OpenAI model
+                settings.set_model('gpt-4o')  # Set default OpenAI model
+            
+        elif provider == "claude":
+            # Check for API key
+            api_key = key or os.getenv("ANTHROPIC_API_KEY") or settings.get_claude_api_key()
+            if not api_key:
+                progress.update(task, completed=True)
+                console.print(Panel(
+                    "[red]Claude API key required[/red]\n"
+                    "[yellow]Provide it using one of these methods:[/yellow]\n"
+                    "[blue]1. With the switch command:[/blue]\n"
+                    "   sayless switch claude --key YOUR_API_KEY\n"
+                    "[blue]2. Environment variable:[/blue]\n"
+                    "   export ANTHROPIC_API_KEY=your_api_key",
+                    title="Error",
+                    border_style="red"
+                ))
+                sys.exit(1)
+            
+            # Configure Claude
+            settings.set_claude_api_key(api_key)
+            settings.set_provider('claude')
+            if not model:
+                settings.set_model('claude-3-5-sonnet-20241022')  # Set default Claude model
             
         elif provider == "ollama":
             settings.set_provider('ollama')
@@ -460,10 +531,13 @@ def switch(
     show_config_status()
 
 @app.command()
+@track_command_usage("config")
 def config(
     openai_key: Optional[str] = typer.Option(None, "--openai-key", help="Set OpenAI API key"),
+    claude_key: Optional[str] = typer.Option(None, "--claude-key", help="Set Claude API key"),
     github_token: Optional[str] = typer.Option(None, "--github-token", help="Set GitHub token"),
-    use_openai: bool = typer.Option(False, "--use-openai", help="Use OpenAI (default)"),
+    use_openai: bool = typer.Option(False, "--use-openai", help="Use OpenAI"),
+    use_claude: bool = typer.Option(False, "--use-claude", help="Use Claude (Anthropic)"),
     use_ollama: bool = typer.Option(False, "--use-ollama", help="Use Ollama (local AI)"),
     model: Optional[str] = typer.Option(None, "--model", help="Set the model to use"),
     show: bool = typer.Option(False, "--show", help="Show current configuration"),
@@ -473,6 +547,7 @@ def config(
         show_config_status()
         provider = settings.get_provider()
         has_openai_key = bool(settings.get_openai_api_key())
+        has_claude_key = bool(settings.get_claude_api_key())
         has_github_token = bool(settings.get_github_token())
         
         if not has_openai_key and provider == 'openai':
@@ -480,6 +555,15 @@ def config(
                 "[yellow]OpenAI API key not configured[/yellow]\n"
                 "[blue]Quick setup:[/blue]\n"
                 "  sayless switch openai --key YOUR_API_KEY",
+                title="Warning",
+                border_style="yellow"
+            ))
+        
+        if not has_claude_key and provider == 'claude':
+            console.print(Panel(
+                "[yellow]Claude API key not configured[/yellow]\n"
+                "[blue]Quick setup:[/blue]\n"
+                "  sayless switch claude --key YOUR_API_KEY",
                 title="Warning",
                 border_style="yellow"
             ))
@@ -505,12 +589,18 @@ def config(
             settings.set_openai_api_key(openai_key)
             settings.set_provider('openai')  # Automatically switch to OpenAI when key is provided
         
+        if claude_key:
+            settings.set_claude_api_key(claude_key)
+            settings.set_provider('claude')  # Automatically switch to Claude when key is provided
+        
         if github_token:
             settings.set_github_token(github_token)
 
-        if use_openai and use_ollama:
+        # Check for conflicting provider selections
+        provider_count = sum([use_openai, use_claude, use_ollama])
+        if provider_count > 1:
             progress.update(task, completed=True)
-            console.print(Panel("[red]Cannot use both OpenAI and Ollama at the same time[/red]", title="Error", border_style="red"))
+            console.print(Panel("[red]Cannot use multiple providers at the same time[/red]", title="Error", border_style="red"))
             sys.exit(1)
 
         if use_openai:
@@ -521,6 +611,17 @@ def config(
                     "[yellow]OpenAI API key not configured[/yellow]\n"
                     "[blue]Quick setup:[/blue]\n"
                     "  sayless switch openai --key YOUR_API_KEY",
+                    title="Warning",
+                    border_style="yellow"
+                ))
+        elif use_claude:
+            settings.set_provider('claude')
+            if not settings.get_claude_api_key():
+                progress.update(task, completed=True)
+                console.print(Panel(
+                    "[yellow]Claude API key not configured[/yellow]\n"
+                    "[blue]Quick setup:[/blue]\n"
+                    "  sayless switch claude --key YOUR_API_KEY",
                     title="Warning",
                     border_style="yellow"
                 ))
@@ -537,6 +638,7 @@ def config(
     show_config_status()
 
 @app.command()
+@track_command_usage("generate")
 def generate(
     preview: bool = typer.Option(False, help="Preview the commit message without creating the commit"),
     auto_add: bool = typer.Option(False, "-a", help="Automatically run 'git add .' before generating commit"),
@@ -545,6 +647,7 @@ def generate(
     _generate_command(preview, auto_add)
 
 @app.command("g")
+@track_command_usage("generate", "alias")
 def generate_alias(
     preview: bool = typer.Option(False, help="Preview the commit message without creating the commit"),
     auto_add: bool = typer.Option(False, "-a", help="Automatically run 'git add .' before generating commit"),
@@ -610,6 +713,18 @@ def _generate_command(preview: bool, auto_add: bool):
             try:
                 message = provider.generate_commit_message(diff, model)
                 progress.update(task_gen, completed=True)
+                
+                # Track the AI generation with input/output data
+                track_command_manual(
+                    command="generate",
+                    subcommand="ai_generation",
+                    success=True,
+                    input_data=diff,
+                    output_data=message,
+                    input_type="git_diff",
+                    parameters={"provider": settings.get_provider(), "model": model}
+                )
+                
             except Exception as e:
                 if isinstance(provider, OpenAIProvider):
                     progress.update(task_gen, description="OpenAI failed, trying Ollama fallback...")
@@ -617,8 +732,33 @@ def _generate_command(preview: bool, auto_add: bool):
                         fallback_provider = OllamaProvider()
                         message = fallback_provider.generate_commit_message(diff, "llama2")
                         progress.update(task_gen, completed=True)
+                        
+                        # Track the fallback generation
+                        track_command_manual(
+                            command="generate",
+                            subcommand="ai_generation_fallback",
+                            success=True,
+                            input_data=diff,
+                            output_data=message,
+                            input_type="git_diff",
+                            parameters={"provider": "ollama", "model": "llama2", "fallback_from": "openai"}
+                        )
+                        
                     except Exception:
                         progress.update(task_gen, visible=False)
+                        
+                        # Track the failed generation
+                        track_command_manual(
+                            command="generate",
+                            subcommand="ai_generation",
+                            success=False,
+                            input_data=diff,
+                            output_data=None,
+                            input_type="git_diff",
+                            error_message=str(e),
+                            parameters={"provider": "both", "model": model}
+                        )
+                        
                         console.print(Panel(
                             f"[red]Both OpenAI and Ollama failed.\nOriginal error: {str(e)}[/red]",
                             title="Error",
@@ -627,6 +767,19 @@ def _generate_command(preview: bool, auto_add: bool):
                         sys.exit(1)
                 else:
                     progress.update(task_gen, visible=False)
+                    
+                    # Track the failed generation
+                    track_command_manual(
+                        command="generate",
+                        subcommand="ai_generation",
+                        success=False,
+                        input_data=diff,
+                        output_data=None,
+                        input_type="git_diff",
+                        error_message=str(e),
+                        parameters={"provider": settings.get_provider(), "model": model}
+                    )
+                    
                     raise
         except Exception as e:
             # Ensure all tasks are properly marked as completed or hidden
@@ -955,6 +1108,7 @@ def since(
             console.print(f"\n[red]Failed to save summary: {str(e)}[/red]")
 
 @app.command()
+@track_command_usage("search")
 def search(
     query: str = typer.Argument(..., help="Search query for finding similar commits"),
     limit: int = typer.Option(5, help="Maximum number of results to show"),
@@ -1142,8 +1296,33 @@ def search(
                 console.print("\n[dim]💡 Tip: Get a detailed analysis of any commit with:[/dim]")
                 console.print("[dim]  sayless summary <commit-hash> --detailed[/dim]")
             
+            # Track search with input/output
+            results_summary = f"Found {len(results)} commits across {len(high_relevance)} high, {len(medium_relevance)} medium, {len(low_relevance)} low relevance"
+            track_command_manual(
+                command="search",
+                subcommand="semantic_search",
+                success=True,
+                input_data=query,
+                output_data=results_summary,
+                input_type="search_query",
+                parameters={"limit": limit, "results_count": len(results)}
+            )
+            
         except Exception as e:
             progress.update(task, visible=False)
+            
+            # Track failed search
+            track_command_manual(
+                command="search",
+                subcommand="semantic_search",
+                success=False,
+                input_data=query,
+                output_data=None,
+                input_type="search_query",
+                error_message=str(e),
+                parameters={"limit": limit}
+            )
+            
             console.print(Panel(
                 f"[red]Oops! Something went wrong while searching: {str(e)}[/red]",
                 title="⚠️ Error",
@@ -1151,6 +1330,7 @@ def search(
             ))
 
 @app.command("branch")
+@track_command_usage("branch")
 def branch_command(
     description: str = typer.Argument(None, help="Description of the branch/feature"),
     no_checkout: bool = typer.Option(False, "--no-checkout", help="Create branch without switching to it"),
@@ -1172,6 +1352,7 @@ def branches_command(
     list_branches(show_details=details)
 
 @app.command("pr")
+@track_command_usage("pr")
 def pr_command(
     action: str = typer.Argument(..., help="Action to perform: create, list"),
     base: str = typer.Option(None, "--base", "-b", help="Base branch for PR (default: main)"),
@@ -1639,6 +1820,42 @@ def review_command(
                 review_with_auto_comment()
             else:
                 review_current_branch(auto_comment)
+
+@app.command("setup")
+@track_command_usage("setup")
+def setup_command(
+    port: int = typer.Option(8888, "--port", "-p", help="Port to run the web UI on"),
+    host: str = typer.Option("127.0.0.1", "--host", help="Host to bind the web UI to"),
+    no_browser: bool = typer.Option(False, "--no-browser", help="Don't automatically open browser"),
+):
+    """Launch the beautiful web-based setup and configuration interface"""
+    console.print(Panel(
+        "[cyan]🚀 Launching Sayless Setup UI[/cyan]\n\n"
+        "[yellow]Features:[/yellow]\n"
+        "• [green]Beautiful configuration interface[/green]\n"
+        "• [green]Real-time connection testing[/green]\n"
+        "• [green]Comprehensive command documentation[/green]\n"
+        "• [green]Status dashboard and monitoring[/green]\n\n"
+        "[blue]The web interface will open automatically in your browser.[/blue]",
+        title="🎨 Setup Interface",
+        border_style="cyan"
+    ))
+    
+    try:
+        launch_setup_ui(host=host, port=port, open_browser=not no_browser)
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Setup UI closed[/yellow]")
+    except Exception as e:
+        console.print(Panel(
+            f"[red]Failed to start setup UI: {str(e)}[/red]\n\n"
+            "[yellow]Fallback options:[/yellow]\n"
+            "• [blue]sayless config --show[/blue] - View current configuration\n"
+            "• [blue]sayless config --openai-key YOUR_KEY[/blue] - Set OpenAI key\n"
+            "• [blue]sayless config --github-token YOUR_TOKEN[/blue] - Set GitHub token",
+            title="Error",
+            border_style="red"
+        ))
+        sys.exit(1)
 
 if __name__ == "__main__":
     app()

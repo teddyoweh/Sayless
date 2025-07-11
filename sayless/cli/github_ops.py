@@ -191,8 +191,15 @@ class GitHubAPI:
         head = get_current_branch()
         
         try:
-            # Validate parameters first
-            self.validate_pr_params(head, base)
+            # Try to validate parameters, but continue if it fails due to auth issues
+            try:
+                self.validate_pr_params(head, base)
+            except ValueError as e:
+                if "Bad credentials" in str(e) or "401" in str(e):
+                    console.print("[yellow]⚠️  Skipping validation due to GitHub authentication issue[/yellow]")
+                    console.print("[yellow]   The PR will still be created if your branch exists on GitHub[/yellow]")
+                else:
+                    raise e
             
             # Create PR
             url = f"{self.api_url}/repos/{self.owner}/{self.repo}/pulls"
@@ -1220,6 +1227,18 @@ def create_pr(base: str = None, show_details: bool = False, auto_push: bool = Tr
         try:
             # Generate PR content
             content = generate_pr_content(progress=progress)
+            
+            # Track PR content generation
+            from .usage_tracker import track_command_manual
+            track_command_manual(
+                command="pr",
+                subcommand="content_generation",
+                success=True,
+                input_data=f"Branch: {get_current_branch()}",
+                output_data=f"Title: {content['title']}\nBody: {content['body']}\nLabels: {content['labels']}",
+                input_type="git_context",
+                parameters={"provider": settings.get_provider(), "action": "create"}
+            )
         except Exception as e:
             console.print(Panel(f"[red]Failed to generate PR content: {str(e)}[/red]", title="Error", border_style="red"))
             sys.exit(1)
@@ -1259,12 +1278,21 @@ def create_pr(base: str = None, show_details: bool = False, auto_push: bool = Tr
             try:
                 github.validate_pr_params(head, base or 'main')
             except ValueError as e:
-                if auto_push and "not found on GitHub" in str(e):
+                if "Bad credentials" in str(e) or "401" in str(e):
+                    console.print("[yellow]⚠️  Skipping validation due to GitHub authentication issue[/yellow]")
+                    console.print("[yellow]   Proceeding with PR creation...[/yellow]")
+                elif auto_push and "not found on GitHub" in str(e):
                     # Try to push the branch
                     try:
                         if push_branch(head):
                             # Retry validation after successful push
-                            github.validate_pr_params(head, base or 'main')
+                            try:
+                                github.validate_pr_params(head, base or 'main')
+                            except ValueError as retry_e:
+                                if "Bad credentials" in str(retry_e) or "401" in str(retry_e):
+                                    console.print("[yellow]⚠️  Validation failed due to auth, but branch was pushed[/yellow]")
+                                else:
+                                    raise retry_e
                         else:
                             raise ValueError("Failed to push branch")
                     except Exception as push_error:
@@ -1460,6 +1488,18 @@ Your casual review:"""
         clean_review = review.strip()
         if clean_review.startswith('"') and clean_review.endswith('"'):
             clean_review = clean_review[1:-1]
+        
+        # Track the code review generation
+        from .usage_tracker import track_command_manual
+        track_command_manual(
+            command="review",
+            subcommand="code_review_generation",
+            success=True,
+            input_data=diff[:1000] + "..." if len(diff) > 1000 else diff,  # Truncate for storage
+            output_data=clean_review,
+            input_type="code_diff",
+            parameters={"provider": provider, "assessment": assessment, "files_count": len(files_changed) if files_changed else 0}
+        )
         
         return {
             'review': clean_review,

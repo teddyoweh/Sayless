@@ -1,0 +1,721 @@
+{% extends "base.html" %}
+
+{% block title %}Analytics - Sayless Setup{% endblock %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/date-fns@2.29.0/index.min.js"></script>
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+    
+    body {
+        font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        font-feature-settings: 'cv11', 'ss01';
+    }
+    
+    /* Custom scrollbar */
+    ::-webkit-scrollbar {
+        width: 6px;
+    }
+    
+    ::-webkit-scrollbar-track {
+        background: transparent;
+    }
+    
+    ::-webkit-scrollbar-thumb {
+        background: hsl(var(--border));
+        border-radius: 3px;
+    }
+    
+    ::-webkit-scrollbar-thumb:hover {
+        background: hsl(var(--muted-foreground));
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8 max-w-7xl" x-data="analytics()">
+    <!-- Header -->
+    <div class="mb-8">
+        <div class="rounded-lg border border-border bg-card p-6">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-4">
+                    <div class="h-12 w-12 rounded-md bg-primary/10 flex items-center justify-center">
+                        <i data-lucide="bar-chart-3" class="h-6 w-6 text-primary"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-2xl font-semibold tracking-tight">Analytics Dashboard</h1>
+                        <p class="text-sm text-muted-foreground">Deep insights into your Sayless AI workflow patterns</p>
+                    </div>
+                </div>
+                
+                <div class="flex items-center space-x-3">
+                    <!-- Time Period Selector -->
+                    <div class="relative">
+                        <select x-model="selectedPeriod" @change="loadAnalytics()" 
+                                class="appearance-none bg-background border border-border rounded-md px-3 py-2 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors">
+                            <option value="7">Last 7 days</option>
+                            <option value="30" selected>Last 30 days</option>
+                            <option value="90">Last 90 days</option>
+                        </select>
+                        <div class="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none">
+                            <i data-lucide="chevron-down" class="w-4 h-4 text-muted-foreground"></i>
+                        </div>
+                    </div>
+                    
+                    <!-- Export Button -->
+                    <button @click="exportData()" 
+                            class="inline-flex items-center space-x-2 bg-primary text-primary-foreground px-3 py-2 rounded-md text-sm font-medium hover:bg-primary/90 transition-colors">
+                        <i data-lucide="download" class="w-4 h-4"></i>
+                        <span>Export Data</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading State -->
+    <div x-show="loading" class="flex items-center justify-center py-24">
+        <div class="rounded-lg border border-border bg-card p-8">
+            <div class="flex items-center space-x-4">
+                <div class="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                <div>
+                    <h3 class="text-lg font-semibold">Loading Analytics</h3>
+                    <p class="text-sm text-muted-foreground">Gathering your usage insights...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Analytics Content -->
+    <div x-show="!loading" x-transition class="space-y-8">
+        <!-- Key Metrics -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <!-- Total Commands -->
+            <div class="rounded-lg border border-border bg-card p-6 transition-colors hover:bg-accent/5">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm text-muted-foreground">Total Commands</p>
+                        <p class="text-3xl font-semibold" x-text="stats.total_commands || 0"></p>
+                        <p class="text-xs text-muted-foreground mt-1">Lifetime executions</p>
+                    </div>
+                    <div class="h-10 w-10 rounded-md bg-blue-100 flex items-center justify-center">
+                        <i data-lucide="terminal" class="h-5 w-5 text-blue-600"></i>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Success Rate -->
+            <div class="rounded-lg border border-border bg-card p-6 transition-colors hover:bg-accent/5">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm text-muted-foreground">Success Rate</p>
+                        <p class="text-3xl font-semibold" x-text="Math.round((stats.success_rate || 0) * 100) + '%'"></p>
+                        <p class="text-xs text-muted-foreground mt-1">Command reliability</p>
+                    </div>
+                    <div class="h-10 w-10 rounded-md bg-green-100 flex items-center justify-center">
+                        <i data-lucide="check-circle" class="h-5 w-5 text-green-600"></i>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Avg Execution Time -->
+            <div class="rounded-lg border border-border bg-card p-6 transition-colors hover:bg-accent/5">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm text-muted-foreground">Avg Execution</p>
+                        <p class="text-3xl font-semibold" x-text="formatTime(stats.avg_execution_time || 0)"></p>
+                        <p class="text-xs text-muted-foreground mt-1">Performance metric</p>
+                    </div>
+                    <div class="h-10 w-10 rounded-md bg-purple-100 flex items-center justify-center">
+                        <i data-lucide="clock" class="h-5 w-5 text-purple-600"></i>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Most Used Command -->
+            <div class="rounded-lg border border-border bg-card p-6 transition-colors hover:bg-accent/5">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm text-muted-foreground">Top Command</p>
+                        <p class="text-2xl font-semibold font-mono" x-text="getTopCommand()"></p>
+                        <p class="text-xs text-muted-foreground mt-1">Most popular</p>
+                    </div>
+                    <div class="h-10 w-10 rounded-md bg-amber-100 flex items-center justify-center">
+                        <i data-lucide="trending-up" class="h-5 w-5 text-amber-600"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts Row -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Usage Over Time -->
+            <div class="rounded-lg border border-border bg-card p-6">
+                <div class="flex items-center justify-between mb-6">
+                    <div>
+                        <h3 class="text-lg font-semibold">Usage Over Time</h3>
+                        <p class="text-sm text-muted-foreground">Command execution trends</p>
+                    </div>
+                    <div class="flex items-center space-x-2 text-sm text-muted-foreground">
+                        <div class="w-2 h-2 bg-blue-500 rounded-full"></div>
+                        <span>Commands</span>
+                    </div>
+                </div>
+                <div class="h-64 bg-muted/20 rounded-md p-4">
+                    <canvas id="usageChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Command Distribution -->
+            <div class="rounded-lg border border-border bg-card p-6">
+                <div class="flex items-center justify-between mb-6">
+                    <div>
+                        <h3 class="text-lg font-semibold">Most Used Commands</h3>
+                        <p class="text-sm text-muted-foreground">Distribution analysis</p>
+                    </div>
+                    <div class="flex items-center space-x-2 text-sm text-muted-foreground">
+                        <div class="w-2 h-2 bg-primary rounded-full"></div>
+                        <span>Last <span x-text="selectedPeriod"></span> days</span>
+                    </div>
+                </div>
+                <div class="h-64 bg-muted/20 rounded-md p-4">
+                    <canvas id="commandChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Provider Distribution & Performance -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Provider Usage -->
+            <div class="rounded-lg border border-border bg-card p-6">
+                <div class="flex items-center justify-between mb-6">
+                    <div>
+                        <h3 class="text-lg font-semibold">AI Provider Distribution</h3>
+                        <p class="text-sm text-muted-foreground">Usage breakdown by provider</p>
+                    </div>
+                    <div class="flex items-center space-x-2 text-sm text-muted-foreground">
+                        <div class="w-2 h-2 bg-primary rounded-full"></div>
+                        <span>Usage stats</span>
+                    </div>
+                </div>
+                <div class="h-64 bg-muted/20 rounded-md p-4">
+                    <canvas id="providerChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Performance Metrics -->
+            <div class="rounded-lg border border-border bg-card p-6">
+                <div class="flex items-center justify-between mb-6">
+                    <div>
+                        <h3 class="text-lg font-semibold">Performance Metrics</h3>
+                        <p class="text-sm text-muted-foreground">Execution time analysis</p>
+                    </div>
+                    <div class="flex items-center space-x-2 text-sm text-muted-foreground">
+                        <div class="w-2 h-2 bg-primary rounded-full"></div>
+                        <span>Response times</span>
+                    </div>
+                </div>
+                <div class="space-y-4 bg-muted/20 rounded-md p-4">
+                    <template x-for="(perf, command) in Object.entries(stats.performance_metrics || {}).slice(0, 5)" :key="command">
+                        <div class="group transition-colors hover:bg-background rounded-lg p-3">
+                            <div class="flex items-center justify-between mb-2">
+                                <code class="bg-muted text-foreground px-2 py-1 rounded text-xs font-mono" x-text="perf[0]"></code>
+                                <span class="text-sm font-medium text-foreground" x-text="formatTime(perf[1].avg_time)"></span>
+                            </div>
+                            <div class="w-full bg-muted rounded-full h-2">
+                                <div class="bg-primary h-2 rounded-full transition-all duration-300" 
+                                     :style="`width: ${Math.min((perf[1].avg_time / 5) * 100, 100)}%`"></div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Activity & Error Summary -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Recent Activity -->
+            <div class="rounded-lg border border-border bg-card p-6">
+                <div class="flex items-center justify-between mb-6">
+                    <h3 class="text-lg font-semibold">Recent Activity</h3>
+                    <span class="text-sm text-muted-foreground">Latest commands</span>
+                </div>
+                <div class="space-y-3 max-h-64 overflow-y-auto">
+                    <template x-for="activity in stats.recent_activity || []" :key="activity.timestamp">
+                        <div class="flex items-center justify-between p-3 rounded-md border border-border">
+                            <div class="flex items-center space-x-3">
+                                <div class="w-2 h-2 rounded-full" 
+                                     :class="activity.success ? 'bg-green-500' : 'bg-red-500'"></div>
+                                <code class="text-sm font-mono" x-text="activity.command"></code>
+                                <span class="text-xs text-muted-foreground" x-text="activity.provider"></span>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-xs text-muted-foreground" x-text="formatTime(activity.execution_time)"></div>
+                                <div class="text-xs text-muted-foreground" x-text="formatRelativeTime(activity.timestamp)"></div>
+                            </div>
+                        </div>
+                    </template>
+                    <div x-show="!stats.recent_activity || stats.recent_activity.length === 0" 
+                         class="text-center py-8 text-muted-foreground">
+                        No recent activity
+                    </div>
+                </div>
+            </div>
+
+            <!-- Error Summary -->
+            <div class="rounded-lg border border-border bg-card p-6">
+                <div class="flex items-center justify-between mb-6">
+                    <h3 class="text-lg font-semibold">Error Summary</h3>
+                    <span class="text-sm text-muted-foreground">Common issues</span>
+                </div>
+                <div class="space-y-3">
+                    <template x-for="error in stats.error_summary || []" :key="error.command + error.error">
+                        <div class="p-4 rounded-md bg-red-50 border border-red-200">
+                            <div class="flex items-start justify-between">
+                                <div class="flex-1">
+                                    <div class="flex items-center space-x-2 mb-1">
+                                        <code class="text-sm font-mono text-red-800" x-text="error.command"></code>
+                                        <span class="text-xs bg-red-200 text-red-800 px-2 py-1 rounded-full" x-text="error.count + ' times'"></span>
+                                    </div>
+                                    <p class="text-sm text-red-700" x-text="error.error"></p>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                    <div x-show="!stats.error_summary || stats.error_summary.length === 0" 
+                         class="text-center py-8 text-muted-foreground">
+                        <i data-lucide="check-circle" class="w-8 h-8 mx-auto text-green-500 mb-2"></i>
+                        <p>No recent errors - great job! 🎉</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Command Success Rates -->
+        <div class="rounded-lg border border-border bg-card p-6">
+            <div class="flex items-center justify-between mb-6">
+                <h3 class="text-lg font-semibold">Command Success Rates</h3>
+                <span class="text-sm text-muted-foreground">Reliability by command</span>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <template x-for="(rate, command) in stats.command_success_rates || {}" :key="command">
+                    <div class="p-4 rounded-md border border-border">
+                        <div class="flex items-center justify-between mb-2">
+                            <code class="text-sm font-mono" x-text="command"></code>
+                            <span class="text-sm font-medium" 
+                                  :class="rate.success_rate >= 0.9 ? 'text-green-600' : rate.success_rate >= 0.7 ? 'text-yellow-600' : 'text-red-600'"
+                                  x-text="Math.round(rate.success_rate * 100) + '%'"></span>
+                        </div>
+                        <div class="w-full bg-muted rounded-full h-2 mb-2">
+                            <div class="h-2 rounded-full transition-all duration-300" 
+                                 :class="rate.success_rate >= 0.9 ? 'bg-green-500' : rate.success_rate >= 0.7 ? 'bg-yellow-500' : 'bg-red-500'"
+                                 :style="`width: ${rate.success_rate * 100}%`"></div>
+                        </div>
+                        <div class="flex justify-between text-xs text-muted-foreground">
+                            <span x-text="rate.total + ' runs'"></span>
+                            <span x-text="formatTime(rate.avg_time)"></span>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <!-- Input/Output Analytics -->
+        <div class="space-y-6">
+            <!-- IO Overview -->
+            <div class="rounded-lg border border-border bg-card p-6">
+                <div class="flex items-center justify-between mb-6">
+                    <h3 class="text-lg font-semibold">Input/Output Analytics</h3>
+                    <span class="text-sm text-muted-foreground">AI interaction patterns</span>
+                </div>
+                
+                <!-- IO Summary Cards -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+                    <div class="rounded-lg border border-border bg-card p-6 transition-colors hover:bg-accent/5">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-sm text-muted-foreground">Commands with I/O</p>
+                                <p class="text-2xl font-semibold" x-text="stats.input_output_analytics?.summary?.total_commands_with_io || 0"></p>
+                            </div>
+                            <div class="h-10 w-10 rounded-md bg-blue-100 flex items-center justify-center">
+                                <i data-lucide="arrow-right-left" class="h-5 w-5 text-blue-600"></i>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="rounded-lg border border-border bg-card p-6 transition-colors hover:bg-accent/5">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-sm text-muted-foreground">Avg Input Size</p>
+                                <p class="text-2xl font-semibold" x-text="formatBytes(stats.input_output_analytics?.summary?.avg_input_length || 0)"></p>
+                            </div>
+                            <div class="h-10 w-10 rounded-md bg-green-100 flex items-center justify-center">
+                                <i data-lucide="download" class="h-5 w-5 text-green-600"></i>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="rounded-lg border border-border bg-card p-6 transition-colors hover:bg-accent/5">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-sm text-muted-foreground">Avg Output Size</p>
+                                <p class="text-2xl font-semibold" x-text="formatBytes(stats.input_output_analytics?.summary?.avg_output_length || 0)"></p>
+                            </div>
+                            <div class="h-10 w-10 rounded-md bg-amber-100 flex items-center justify-center">
+                                <i data-lucide="upload" class="h-5 w-5 text-amber-600"></i>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="rounded-lg border border-border bg-card p-6 transition-colors hover:bg-accent/5">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-sm text-muted-foreground">Input Types</p>
+                                <p class="text-2xl font-semibold" x-text="(stats.input_output_analytics?.summary?.input_types || []).length"></p>
+                            </div>
+                            <div class="h-10 w-10 rounded-md bg-rose-100 flex items-center justify-center">
+                                <i data-lucide="file-type" class="h-5 w-5 text-rose-600"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- IO by Command -->
+                <div class="space-y-4">
+                    <h4 class="font-semibold">Input/Output by Command</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <template x-for="command in stats.input_output_analytics?.by_command || []" :key="command.command + command.input_type">
+                            <div class="p-4 rounded-md border border-border bg-muted/20">
+                                <div class="flex items-center justify-between mb-2">
+                                    <div class="flex items-center space-x-2">
+                                        <code class="text-sm font-mono" x-text="command.command"></code>
+                                        <span class="text-xs bg-muted text-muted-foreground px-2 py-1 rounded" x-text="command.input_type"></span>
+                                    </div>
+                                    <span class="text-sm font-medium text-muted-foreground" x-text="command.total_io + ' ops'"></span>
+                                </div>
+                                <div class="grid grid-cols-2 gap-4 text-sm">
+                                    <div>
+                                        <span class="text-muted-foreground">Input:</span>
+                                        <span class="font-medium" x-text="formatBytes(command.avg_input_length)"></span>
+                                    </div>
+                                    <div>
+                                        <span class="text-muted-foreground">Output:</span>
+                                        <span class="font-medium" x-text="formatBytes(command.avg_output_length)"></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent I/O Samples -->
+            <div class="rounded-lg border border-border bg-card p-6">
+                <div class="flex items-center justify-between mb-6">
+                    <h3 class="text-lg font-semibold">Recent Input/Output Samples</h3>
+                    <div class="flex items-center space-x-3">
+                        <span class="text-sm text-muted-foreground">Latest AI interactions</span>
+                        <button onclick="window.location.href='/io-samples'" 
+                                class="inline-flex items-center space-x-2 px-3 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 transition-colors">
+                            <i data-lucide="expand" class="w-4 h-4"></i>
+                            <span>View All Samples</span>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="space-y-4">
+                    <template x-for="sample in stats.input_output_analytics?.recent_samples || []" :key="sample.timestamp">
+                        <div class="p-4 rounded-md border border-border bg-muted/20">
+                            <div class="flex items-center justify-between mb-3">
+                                <div class="flex items-center space-x-2">
+                                    <code class="text-sm font-mono" x-text="sample.command"></code>
+                                    <span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded" x-text="sample.input_type"></span>
+                                </div>
+                                <div class="flex items-center space-x-4 text-sm text-muted-foreground">
+                                    <span x-text="formatBytes(sample.input_length) + ' → ' + formatBytes(sample.output_length)"></span>
+                                    <span x-text="formatRelativeTime(sample.timestamp)"></span>
+                                </div>
+                            </div>
+                            
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <!-- Input Preview -->
+                                <div class="space-y-2">
+                                    <div class="flex items-center space-x-2">
+                                        <i data-lucide="download" class="w-4 h-4 text-green-600"></i>
+                                        <span class="text-sm font-medium text-green-700">Input Preview</span>
+                                    </div>
+                                    <div class="bg-green-50 border border-green-200 rounded p-3">
+                                        <pre class="text-xs text-green-800 whitespace-pre-wrap" x-text="sample.input_preview || 'No preview available'"></pre>
+                                        <div x-show="sample.input_preview && sample.input_preview.length >= 200" 
+                                             class="text-xs text-green-600 mt-1">
+                                            ... (truncated)
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Output Preview -->
+                                <div class="space-y-2">
+                                    <div class="flex items-center space-x-2">
+                                        <i data-lucide="upload" class="w-4 h-4 text-blue-600"></i>
+                                        <span class="text-sm font-medium text-blue-700">Output Preview</span>
+                                    </div>
+                                    <div class="bg-blue-50 border border-blue-200 rounded p-3">
+                                        <pre class="text-xs text-blue-800 whitespace-pre-wrap" x-text="sample.output_preview || 'No preview available'"></pre>
+                                        <div x-show="sample.output_preview && sample.output_preview.length >= 200" 
+                                             class="text-xs text-blue-600 mt-1">
+                                            ... (truncated)
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                    
+                    <div x-show="!stats.input_output_analytics?.recent_samples || stats.input_output_analytics.recent_samples.length === 0" 
+                         class="text-center py-8 text-gray-500">
+                        <i data-lucide="database" class="w-8 h-8 mx-auto text-gray-400 mb-2"></i>
+                        <p>No input/output data available yet</p>
+                        <p class="text-sm">Use commands like 'generate' or 'review' to see AI interactions</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function analytics() {
+    return {
+        loading: true,
+        selectedPeriod: 30,
+        stats: {},
+        charts: {},
+        
+        async init() {
+            await this.loadAnalytics();
+        },
+        
+        async loadAnalytics() {
+            this.loading = true;
+            try {
+                const response = await api.get(`/api/analytics/overview?days=${this.selectedPeriod}`);
+                this.stats = response;
+                
+                // Small delay to let the DOM update
+                await new Promise(resolve => setTimeout(resolve, 100));
+                
+                this.createCharts();
+            } catch (error) {
+                console.error('Failed to load analytics:', error);
+                showNotification('Failed to load analytics', 'error');
+            } finally {
+                this.loading = false;
+            }
+        },
+        
+        createCharts() {
+            this.createUsageChart();
+            this.createCommandChart();
+            this.createProviderChart();
+        },
+        
+        createUsageChart() {
+            const ctx = document.getElementById('usageChart');
+            if (!ctx) return;
+            
+            // Destroy existing chart
+            if (this.charts.usage) {
+                this.charts.usage.destroy();
+            }
+            
+            const dailyData = this.stats.daily_usage || [];
+            
+            this.charts.usage = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: dailyData.map(d => new Date(d.date).toLocaleDateString()),
+                    datasets: [{
+                        label: 'Commands',
+                        data: dailyData.map(d => d.count),
+                        borderColor: '#8B5CF6',
+                        backgroundColor: '#8B5CF6',
+                        tension: 0.4,
+                        fill: false
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: {
+                                color: '#F3F4F6'
+                            }
+                        },
+                        x: {
+                            grid: {
+                                display: false
+                            }
+                        }
+                    }
+                }
+            });
+        },
+        
+        createCommandChart() {
+            const ctx = document.getElementById('commandChart');
+            if (!ctx) return;
+            
+            // Destroy existing chart
+            if (this.charts.command) {
+                this.charts.command.destroy();
+            }
+            
+            const commands = this.stats.most_used_commands || [];
+            const colors = [
+                '#8B5CF6', '#06B6D4', '#10B981', '#F59E0B', 
+                '#EF4444', '#84CC16', '#F97316', '#6366F1'
+            ];
+            
+            this.charts.command = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: commands.map(c => c.command),
+                    datasets: [{
+                        data: commands.map(c => c.count),
+                        backgroundColor: colors.slice(0, commands.length),
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                usePointStyle: true,
+                                padding: 20
+                            }
+                        }
+                    }
+                }
+            });
+        },
+        
+        createProviderChart() {
+            const ctx = document.getElementById('providerChart');
+            if (!ctx) return;
+            
+            // Destroy existing chart
+            if (this.charts.provider) {
+                this.charts.provider.destroy();
+            }
+            
+            const providers = this.stats.provider_distribution || {};
+            const providerColors = {
+                'openai': '#10B981',
+                'claude': '#F59E0B', 
+                'ollama': '#6366F1'
+            };
+            
+            this.charts.provider = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(providers),
+                    datasets: [{
+                        label: 'Usage',
+                        data: Object.values(providers),
+                        backgroundColor: Object.keys(providers).map(p => providerColors[p] || '#6B7280'),
+                        borderRadius: 8,
+                        borderSkipped: false
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: {
+                                color: '#F3F4F6'
+                            }
+                        },
+                        x: {
+                            grid: {
+                                display: false
+                            }
+                        }
+                    }
+                }
+            });
+        },
+        
+        formatTime(seconds) {
+            if (!seconds) return '0s';
+            if (seconds < 1) return Math.round(seconds * 1000) + 'ms';
+            return seconds.toFixed(1) + 's';
+        },
+        
+        formatRelativeTime(timestamp) {
+            const date = new Date(timestamp);
+            const now = new Date();
+            const diff = now - date;
+            
+            if (diff < 60000) return 'just now';
+            if (diff < 3600000) return Math.floor(diff / 60000) + 'm ago';
+            if (diff < 86400000) return Math.floor(diff / 3600000) + 'h ago';
+            return Math.floor(diff / 86400000) + 'd ago';
+        },
+        
+        getTopCommand() {
+            const commands = this.stats.most_used_commands || [];
+            return commands.length > 0 ? commands[0].command : 'N/A';
+        },
+        
+        formatBytes(bytes) {
+            if (!bytes) return '0 B';
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+            return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
+        },
+        
+        async exportData() {
+            try {
+                const response = await fetch(`/api/analytics/export?format=csv&days=${this.selectedPeriod}`);
+                const blob = await response.blob();
+                
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `sayless_usage_${this.selectedPeriod}days.csv`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+                
+                showNotification('Usage data exported successfully!', 'success');
+            } catch (error) {
+                console.error('Export failed:', error);
+                showNotification('Failed to export data', 'error');
+            }
+        }
+    }
+}
+</script>
+{% endblock %} 
