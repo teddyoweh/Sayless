@@ -11,7 +11,7 @@ import os
 import typer
 from .ai_providers import OpenAIProvider, OllamaProvider
 from .config import Config
-from .git_ops import run_git_command, get_current_branch
+from .git_ops import run_git_command, get_current_branch, get_default_branch
 from .dependency_manager import DependencyManager
 from dataclasses import dataclass
 from enum import Enum
@@ -51,6 +51,8 @@ class ReviewTemplate:
     checklist: List[str]
     focus_areas: List[str]
     ai_prompt_template: str
+
+
 
 class GitHubAPI:
     def __init__(self):
@@ -958,7 +960,7 @@ def generate_pr_content(branch: str = None, progress: Progress = None) -> Dict[s
     
     try:
         # Get base branch
-        base_branch = 'main' if run_git_command(['rev-parse', '--verify', 'main'], check=False).returncode == 0 else 'master'
+        base_branch = get_default_branch()
         
         # Get changes
         merge_base = run_git_command(['merge-base', base_branch, branch]).stdout.strip()
@@ -981,6 +983,18 @@ def generate_pr_content(branch: str = None, progress: Progress = None) -> Dict[s
                 border_style="yellow"
             ))
             sys.exit(1)
+        
+        # Optimize diff for AI processing
+        from .ai_providers import AIProvider
+        estimated_tokens = AIProvider.estimate_tokens(diff)
+        
+        if estimated_tokens > 60000:
+            console.print(f"[yellow]Large diff detected ({estimated_tokens:,} tokens). Using intelligent analysis...[/yellow]")
+            if estimated_tokens > 150000:
+                diff_summary = AIProvider.get_diff_summary(diff)
+                diff = f"SUMMARY OF CHANGES:\n{diff_summary}\n\nFIRST 100 LINES OF DIFF:\n" + '\n'.join(diff.split('\n')[:100])
+            else:
+                diff = AIProvider.truncate_diff_intelligently(diff, max_tokens=60000)
         
         provider = settings.get_provider()
         model = settings.get_model()
@@ -1275,8 +1289,9 @@ def create_pr(base: str = None, show_details: bool = False, auto_push: bool = Tr
             head = get_current_branch()
             
             # Try to validate PR parameters
+            default_base = base or get_default_branch()
             try:
-                github.validate_pr_params(head, base or 'main')
+                github.validate_pr_params(head, default_base)
             except ValueError as e:
                 if "Bad credentials" in str(e) or "401" in str(e):
                     console.print("[yellow]⚠️  Skipping validation due to GitHub authentication issue[/yellow]")
@@ -1287,7 +1302,7 @@ def create_pr(base: str = None, show_details: bool = False, auto_push: bool = Tr
                         if push_branch(head):
                             # Retry validation after successful push
                             try:
-                                github.validate_pr_params(head, base or 'main')
+                                github.validate_pr_params(head, default_base)
                             except ValueError as retry_e:
                                 if "Bad credentials" in str(retry_e) or "401" in str(retry_e):
                                     console.print("[yellow]⚠️  Validation failed due to auth, but branch was pushed[/yellow]")
@@ -1306,7 +1321,7 @@ def create_pr(base: str = None, show_details: bool = False, auto_push: bool = Tr
             pr = github.create_pr(
                 title=content['title'],
                 body=content['body'],
-                base=base or 'main',
+                base=default_base,
                 labels=content['labels']
             )
             progress.update(task_create, completed=True)
@@ -1548,7 +1563,7 @@ def review_current_branch(auto_comment: bool = False) -> None:
             current_branch = get_current_branch()
             
             # Find base branch
-            base_branch = 'main' if run_git_command(['rev-parse', '--verify', 'main'], check=False).returncode == 0 else 'master'
+            base_branch = get_default_branch()
             
             # Get changes between base and current branch
             try:
