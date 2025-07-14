@@ -1,322 +1,561 @@
-# 🎬 Sayless Demo Script - "The AI Git Workflow Revolution"
+# Sayless Complete Demo & Usage Guide
 
-## 🎯 **Demo Goal**
-Show developers how Sayless transforms their daily git workflow from tedious manual work into an intelligent, automated experience that saves hours every day.
+Welcome to the complete Sayless demo! This guide walks you through all features with practical examples and real-world workflows.
 
-## 🎪 **The Hook (0-30 seconds)**
+## 🚀 Getting Started
 
-### **Opening Line** 
-*"What if I told you that you could cut your git workflow time by 80% and never write another boring commit message again?"*
-
-### **Visual Setup**
-- Clean terminal window
-- VS Code with a messy project (multiple changed files)
-- Split screen showing before/after
-
-### **The Problem Statement**
-*"Every day, developers spend HOURS on repetitive git tasks - writing commit messages, creating branches, reviewing PRs, managing dependencies. It's 2025, and we're still doing this manually?"*
-
----
-
-## 🚀 **Act 1: The Magic Moment (30s - 2min)**
-
-### **Scene 1: The One-Command Commit**
+### Installation & Setup
 ```bash
-# Show multiple modified files
-git status
-# 15 files changed, messy state
+# Install Sayless
+pip install sayless
 
-# The magic moment
+# Quick setup with OpenAI (recommended)
+sayless config --openai-key YOUR_API_KEY
+
+# Alternative: Local AI with Ollama
+# 1. Install Ollama from https://ollama.ai
+# 2. Switch to local processing
+sayless switch ollama
+```
+
+### Verify Your Setup
+```bash
+# Check configuration
+sl config --show
+
+# Test with a simple command
+sl --help
+```
+
+## 🎯 Core Workflows
+
+### 1. Smart Commit Generation
+
+#### Basic Usage
+```bash
+# Scenario: You've added a new login function
+echo "def login(username, password): return authenticate(username, password)" > auth.py
+git add auth.py
+
+# Generate intelligent commit
+sl g
+# ✨ Result: "feat(auth): add user login function with authentication"
+
+# Or stage everything and commit in one command
 sl g -a
 ```
 
-**What to say:**
-*"Watch this. ONE command. That's it."*
-
-**Show the AI thinking, then:**
-- Intelligent commit message generated
-- All files staged automatically  
-- Perfect conventional commit format
-- Commit created instantly
-
-**Reaction:**
-*"That just analyzed all my changes, understood the context, and created a perfect commit message. In 3 seconds."*
-
-### **Scene 2: The Instant Branch**
+#### Advanced Commit Examples
 ```bash
-# Continue the flow
+# Different types of changes Sayless recognizes:
+
+# 1. Bug Fix
+echo "# Fix: Handle null pointer exception" >> bug_fix.py
+sl g -a
+# → "fix(validation): handle null pointer exception in user input"
+
+# 2. Feature Addition
+mkdir -p api/endpoints
+echo "def create_user(): pass" > api/endpoints/users.py
+sl g -a
+# → "feat(api): add user creation endpoint"
+
+# 3. Documentation Update
+echo "# Installation Guide" > docs/install.md
+sl g -a
+# → "docs: add installation guide"
+
+# 4. Refactoring
+echo "# Simplified authentication logic" >> auth.py
+sl g -a
+# → "refactor(auth): simplify authentication logic"
+
+# Preview before committing
+sl g --preview
+# Shows what the commit message would be without committing
+```
+
+### 2. Intelligent Branch Management
+
+#### Create Branches from Descriptions
+```bash
+# Sayless creates meaningful branch names from your descriptions
+
+sl branch "Add user authentication with JWT tokens"
+# → Creates and switches to: feat/add-user-authentication-jwt-tokens
+
+sl branch "Fix memory leak in image processing"
+# → Creates: fix/memory-leak-image-processing
+
+sl branch "Update documentation for API endpoints"
+# → Creates: docs/update-documentation-api-endpoints
+```
+
+#### Generate Branch Names from Changes
+```bash
+# Make changes first, then let AI suggest the branch name
+echo "class PaymentProcessor:" > payment.py
+echo "    def process_payment(self, amount): pass" >> payment.py
+git add payment.py
+
+# Generate branch name from staged changes
 sl branch -g
+# AI analyzes changes and suggests: feat/add-payment-processor
+
+# Combine staging and branch generation
+sl branch -g -a
+# Stages all changes AND creates branch based on them
 ```
 
-**What to say:**
-*"Need a new branch? Don't think, just type."*
-
-**Show:**
-- AI analyzes your staged changes
-- Generates semantic branch name: `feat/user-authentication-system`
-- Switches to the branch automatically
-
-*"It KNEW what I was building just from looking at my code."*
-
----
-
-## 🔥 **Act 2: The Developer Workflow Revolution (2min - 4min)**
-
-### **Scene 3: The Full PR Pipeline**
+#### Branch Analysis
 ```bash
-# Make some more changes
-sl g -a              # Commit changes
-sl pr create         # Create PR with AI content
+# List branches with AI-generated summaries
+sl branches --details
+
+# Example output:
+# main               Main development branch
+# feat/user-auth     Implements JWT authentication system
+# fix/login-bug      Resolves login validation issues
+# docs/api-guide     Updates API documentation
 ```
 
-**What to say:**
-*"Here's where it gets insane. I want to create a pull request..."*
+### 3. AI-Powered Pull Requests
 
-**Show the AI generating:**
-- Intelligent PR title
-- Detailed description with sections
-- Testing instructions
-- Breaking changes detection
-- Auto-labels assignment
-
-**Show the GitHub PR that was created**
-*"Look at this PR description. This is better than what most developers write manually after 20 minutes of thinking!"*
-
-### **Scene 4: AI Code Review**
+#### Basic PR Creation
 ```bash
+# Create PR with AI-generated title, description, and labels
+sl pr create
+
+# Example generated PR:
+# Title: "feat(auth): implement JWT authentication system"
+# 
+# ## Overview
+# This PR implements a comprehensive JWT authentication system for user login and session management.
+#
+# ## Changes
+# - Add JWT token generation and validation
+# - Implement user login endpoint
+# - Add middleware for protected routes
+# - Include comprehensive test coverage
+#
+# ## Testing
+# - Run `pytest tests/test_auth.py` for authentication tests
+# - Test login flow with sample credentials
+# - Verify token expiration handling
+#
+# Labels: [authentication, security, feature]
+```
+
+#### Advanced PR Options
+```bash
+# Target specific branch
+sl pr create --base develop
+
+# Include detailed analysis
+sl pr create --details
+
+# Create PR for different base
+sl pr create --base release/v2.0
+```
+
+#### PR Management
+```bash
+# List open PRs with AI insights
+sl pr list --details
+
+# Example output:
+# #123  feat(auth): JWT implementation    john_dev    auth-feature
+#       → Adds comprehensive authentication system with security focus
+#
+# #124  fix(api): resolve timeout issues  jane_dev    fix-timeouts  
+#       → Critical bug fix for API response timeouts
+```
+
+### 4. Code Review Assistant
+
+#### Review Your Current Work
+```bash
+# Review current branch changes
+sl review
+
+# Example output:
+# 🤖 Code Review - feat/user-auth
+# 
+# The authentication implementation looks solid overall. You've added proper JWT 
+# handling with token validation and expiration checks. The login function correctly 
+# handles password hashing, and I like how you've separated the authentication logic 
+# into its own module. One thing to consider is adding rate limiting to prevent 
+# brute force attacks on the login endpoint. Also, make sure to validate the JWT 
+# secret is stored securely and not hardcoded.
+```
+
+#### Review Specific PRs
+```bash
+# Review a specific PR
+sl review --pr 123
+
+# Post review directly to GitHub
+sl review --pr 123 --auto-comment
+
+# Review with automatic posting for current branch
+sl review --auto-comment
+```
+
+#### Enhanced Review Types
+```bash
+# Security-focused review
 sl review-enhanced --pr 123 --type security
+
+# Performance-focused review  
+sl review-enhanced --pr 123 --type performance
+
+# Comprehensive detailed review
+sl review-enhanced --pr 123 --type detailed
+
+# Dependency-focused review
+sl review-enhanced --pr 123 --type dependencies
+
+# Quick overview review
+sl review-enhanced --pr 123 --type quick
 ```
 
-**What to say:**
-*"But wait, there's more. Let's say I want to review someone's PR..."*
-
-**Show:**
-- Detailed security analysis
-- Specific vulnerability detection
-- Performance recommendations
-- Code quality assessment
-- Structured checklist with status
-
-*"This is like having a senior developer reviewing every line of code, checking for security issues, performance problems, best practices - instantly."*
-
----
-
-## 🤯 **Act 3: The Power User Features (4min - 6min)**
-
-### **Scene 5: Semantic Search Magic**
+#### Bulk Reviews
 ```bash
-sl search "authentication bug fix"
+# Review multiple PRs at once
+sl bulk-review --type quick --max 5
+
+# Auto-post reviews to GitHub
+sl bulk-review --type security --max 3 --auto-post
 ```
 
-**What to say:**
-*"Traditional git log is useless. This is semantic search through your entire git history."*
+### 5. Semantic Repository Search
 
-**Show results:**
-- Finds commits by MEANING, not just text
-- Shows relevant commits even with different wording
-- Contextual understanding
-
-*"It found commits about login issues, security patches, auth middleware updates - because it understands MEANING."*
-
-### **Scene 6: Dependency Doctor**
+#### Natural Language Search
 ```bash
+# Search using natural language instead of git log grep
+sl search "authentication improvements"
+sl search "API endpoint changes"
+sl search "React component updates"
+sl search "database migration scripts"
+sl search "performance optimizations in image processing"
+
+# Limit results
+sl search "bug fixes" --limit 10
+
+# Example output:
+# 🔍 Found 5 relevant commits for "authentication improvements":
+#
+# abc123f  feat(auth): implement JWT authentication system
+#          2 days ago by john_dev
+#          Added comprehensive JWT auth with token validation
+#
+# def456a  fix(auth): resolve login validation bug  
+#          1 week ago by jane_dev
+#          Fixed edge case in password validation logic
+```
+
+#### Advanced Search Options
+```bash
+# Index all commits for better search (one-time setup)
+sl search "database changes" --index-all
+
+# Search with context
+sl search "React hooks implementation" --context
+```
+
+### 6. Repository Analysis & Insights
+
+#### Time-based Analysis
+```bash
+# Analyze recent changes
+sl since 1d              # Last 24 hours
+sl since 1w              # Last week
+sl since 1m              # Last month
+sl since 3m              # Last 3 months
+
+# Analyze from specific date
+sl since 2023-06-01      # All changes since June 1st
+sl since 2023-01-01      # Year-to-date changes
+
+# Example output:
+# 📊 Repository Analysis - Last Week
+#
+# ## Summary
+# 15 commits across 8 files with focus on authentication and API improvements
+#
+# ## Key Changes
+# - Implemented JWT authentication system (5 commits)
+# - Fixed critical API timeout issues (3 commits)  
+# - Updated documentation (2 commits)
+# - Performance optimizations (5 commits)
+#
+# ## Impact
+# +324 lines, -156 lines across authentication, API, and documentation modules
+```
+
+#### Export Analysis
+```bash
+# Save analysis to markdown file
+sl since 1w --save
+# Creates: sayless_analysis_YYYY-MM-DD.md
+
+# Save with custom name
+sl since 1m --save --filename monthly_report.md
+```
+
+#### Specific Commit Analysis
+```bash
+# Analyze a specific commit
+sl summary abc123f --detailed
+
+# Example output:
+# 🔍 Commit Analysis: abc123f
+#
+# Title: feat(auth): implement JWT authentication system
+# Author: john_dev
+# Date: 2 days ago
+#
+# ## Impact Analysis
+# This commit introduces a comprehensive authentication system using JWT tokens.
+# Key additions include token generation, validation middleware, and secure
+# session management. The implementation follows security best practices with
+# proper token expiration and refresh mechanisms.
+#
+# ## Files Changed
+# - auth/jwt_handler.py (new): JWT token operations
+# - middleware/auth.py (modified): Authentication middleware
+# - tests/test_auth.py (new): Comprehensive test coverage
+```
+
+### 7. Dependency Management
+
+#### Analyze Dependencies
+```bash
+# Analyze dependency changes in current commit
+sl deps analyze
+
+# Example output:
+# 🔍 Dependency Changes Detected
+#
+# 📦 NPM Dependencies
+# Package              Change      Version
+# express             ⬆️ updated  4.17.1 → 4.18.2
+# jsonwebtoken        ✅ added     +9.0.2
+# bcrypt              ✅ added     +5.1.0
+#
+# 🔎 Missing Dependencies Detected  
+# Package        Import Statement           File             Confidence
+# requests       import requests            api/client.py    100%
+# pandas         import pandas as pd        data/process.py  100%
+#
+# 🤖 AI Analysis
+# The Express.js update includes security patches and performance improvements.
+# The addition of jsonwebtoken and bcrypt suggests implementation of secure
+# authentication. Consider updating related packages like passport for consistency.
+#
+# To auto-add missing dependencies: sl deps analyze --auto-fix
+```
+
+#### Auto-fix Missing Dependencies
+```bash
+# Automatically add missing dependencies
 sl deps analyze --auto-fix
+
+# Check for available updates
+sl deps check
+
+# Update dependencies with AI guidance
+sl deps update --auto-fix
 ```
 
-**What to say:**
-*"Here's something that will blow your mind. It can analyze your code and automatically detect missing dependencies."*
+## 🔄 Complete Development Workflows
 
-**Show:**
-- Scans imports across the codebase
-- Identifies missing packages
-- Auto-adds them to requirements.txt
-- Explains what each dependency does
-
-*"No more 'ModuleNotFoundError'. It just... fixes it."*
-
-### **Scene 7: Bulk Operations**
+### Workflow 1: Feature Development
 ```bash
-sl bulk-review --type security --max 5
+# 1. Create feature branch
+sl branch "Add user profile management"
+# → feat/add-user-profile-management
+
+# 2. Make your changes
+echo "class UserProfile:" > profile.py
+echo "    def update_profile(self): pass" >> profile.py
+
+# 3. Stage and commit with AI
+sl g -a
+# → "feat(profile): add user profile management class"
+
+# 4. Continue development
+echo "    def get_profile(self): pass" >> profile.py
+sl g -a
+# → "feat(profile): add profile retrieval method"
+
+# 5. Create PR when ready
+sl pr create
+# → AI generates comprehensive PR with title, description, labels
+
+# 6. Review before merging
+sl review
+# → Get AI feedback on your changes
 ```
 
-**What to say:**
-*"Need to review multiple PRs? One command."*
-
-**Show:**
-- Reviews 5 PRs simultaneously
-- Different analysis for each
-- Generates comprehensive reports
-- Posts reviews automatically
-
-*"It just reviewed 5 PRs in the time it takes you to open one."*
-
----
-
-## 💎 **Act 4: The Beautiful Interface (6min - 7min)**
-
-### **Scene 8: The Setup Experience**
+### Workflow 2: Bug Fix Process
 ```bash
-sl setup
+# 1. Create bug fix branch
+sl branch "Fix login validation error"
+# → fix/login-validation-error
+
+# 2. Implement fix
+echo "# Fixed null validation bug" >> auth.py
+sl g -a
+# → "fix(auth): handle null validation in login process"
+
+# 3. Create PR with detailed analysis
+sl pr create --details
+
+# 4. Review the fix
+sl review-enhanced --type security
+# → Security-focused review of the bug fix
 ```
 
-**What to say:**
-*"And if you prefer GUIs, this will make you happy."*
-
-**Show:**
-- Beautiful web interface opens
-- Clean, modern design
-- Real-time status indicators
-- Analytics dashboard
-
-**Navigate through:**
-- Provider setup (OpenAI, Claude, Ollama)
-- Configuration interface
-- Analytics with beautiful charts
-- Command documentation
-
-*"This isn't just a CLI tool. It's a complete developer experience."*
-
----
-
-## 🎊 **The Grand Finale (7min - 8min)**
-
-### **The Complete Workflow Demo**
-*"Let me show you a complete real-world workflow."*
-
+### Workflow 3: Code Review Process
 ```bash
-# Start with idea
-sl branch "implement user dashboard"
-# Make changes...
-sl g -a                          # Perfect commit
-# More changes...
-sl g -a                          # Another perfect commit  
-sl pr create                     # Beautiful PR
-sl review --current --auto-post  # Self-review and post
-sl deps analyze --auto-fix       # Fix any dependency issues
+# 1. Review incoming PRs
+sl pr list --details
+# See AI insights for all open PRs
+
+# 2. Detailed review of specific PR
+sl review-enhanced --pr 123 --type detailed
+
+# 3. Security review for sensitive changes
+sl review-enhanced --pr 124 --type security --auto-post
+
+# 4. Bulk review multiple PRs
+sl bulk-review --type quick --max 5
 ```
 
-**What to say:**
-*"From idea to deployed PR with AI review and dependency management. All in under 2 minutes. This used to take 30 minutes of manual work."*
-
----
-
-## 🚀 **The Call to Action (8min - 8:30min)**
-
-### **The Numbers**
-*"Here's what this means for you:*
-- *80% less time on git workflows*
-- *Zero typos in commit messages*  
-- *Professional PR descriptions every time*
-- *Instant security and performance reviews*
-- *Never miss a dependency again*
-- *Search your git history like a search engine"*
-
-### **The Installation**
+### Workflow 4: Repository Maintenance
 ```bash
-pip install sayless
-sl setup
+# 1. Weekly repository analysis
+sl since 1w --save
+# Get comprehensive weekly report
+
+# 2. Dependency maintenance
+sl deps check
+sl deps update --auto-fix
+
+# 3. Search for specific patterns
+sl search "TODO comments"
+sl search "deprecated function usage"
+
+# 4. Analyze impact of major changes
+sl summary abc123f --detailed
 ```
 
-*"One command to install. 30 seconds to set up. Your git workflow will never be the same."*
+## 🛠️ Advanced Configuration
 
----
+### AI Provider Management
+```bash
+# Switch between providers
+sl switch openai --model gpt-4
+sl switch openai --model gpt-3.5-turbo
+sl switch ollama --model llama2
+sl switch ollama --model codellama
 
-## 🎬 **Production Tips**
-
-### **Visual Elements**
-- **Split screen**: Terminal + VS Code + Browser
-- **Smooth transitions**: No jarring cuts
-- **Syntax highlighting**: Make code readable
-- **Zoom on important text**: Especially AI-generated content
-- **Real-time typing**: Show the actual commands being typed
-
-### **Pacing**
-- **Quick cuts** during the "magic moments"
-- **Slower** when showing generated content (let people read)
-- **Build anticipation** before revealing results
-- **Natural pauses** for impact
-
-### **Audio**
-- **Excited but not hyped** - genuine enthusiasm
-- **Clear pronunciation** of commands
-- **Emphasis** on key words: "ONE command", "3 seconds", "automatically"
-- **Background music**: Subtle, modern, tech-focused
-
-### **Screen Setup**
-```
-┌─────────────────┬─────────────────┐
-│     Terminal    │     VS Code     │
-│                 │                 │
-├─────────────────┼─────────────────┤
-│     Browser     │    Web UI       │
-│   (GitHub PR)   │  (Analytics)    │
-└─────────────────┴─────────────────┘
+# Configure provider-specific settings
+sl config --openai-key YOUR_KEY
+sl config --github-token YOUR_TOKEN
 ```
 
-### **Key Moments to Emphasize**
-1. **The first `sl g -a`** - This is the hook
-2. **The generated commit message** - Show it's actually good
-3. **The PR description** - Show it's comprehensive  
-4. **The security review results** - Show it finds real issues
-5. **The dependency auto-fix** - Show it actually works
+### Customization Options
+```bash
+# View all configuration
+sl config --show
 
-### **What NOT to Do**
-- ❌ Don't explain every technical detail
-- ❌ Don't show configuration/setup issues
-- ❌ Don't use fake/trivial examples
-- ❌ Don't rush through the AI-generated content
-- ❌ Don't sound like a commercial
+# Set preferences
+export OPENAI_API_KEY=your_key
+export GITHUB_TOKEN=your_token
+export SAYLESS_DEFAULT_MODEL=gpt-4
+```
 
-### **What TO Do**
-- ✅ Use real projects with real complexity
-- ✅ Show genuine surprise at the results
-- ✅ Let the AI-generated content speak for itself
-- ✅ Keep energy high but natural
-- ✅ Show the time savings clearly
-- ✅ Include small "wow" moments throughout
+## 🎯 Pro Tips
+
+### 1. Commit Message Quality
+- Stage related changes together for focused commits
+- Use `sl g --preview` to review messages before committing
+- Let Sayless detect the type (feat, fix, docs, etc.) automatically
+
+### 2. Branch Organization
+- Use descriptive branch names that Sayless can create
+- Let AI generate names from your changes with `sl branch -g`
+- Use `sl branches --details` to track branch purposes
+
+### 3. PR Management
+- Create PRs early with `sl pr create` for better collaboration
+- Use `--details` flag for complex changes
+- Review your own work with `sl review` before requesting reviews
+
+### 4. Code Reviews
+- Use different review types for different concerns
+- Leverage `--auto-comment` for consistent review posting
+- Combine quick reviews with detailed analysis as needed
+
+### 5. Repository Insights
+- Run weekly analysis with `sl since 1w --save`
+- Use semantic search to find specific patterns
+- Export analysis for team meetings and documentation
+
+## 🔍 Troubleshooting
+
+### Common Issues
+
+**1. AI Provider Issues**
+```bash
+# Check configuration
+sl config --show
+
+# Test connectivity
+sl g --preview  # Should work if API is configured
+
+# Switch providers if needed
+sl switch ollama  # Fallback to local AI
+```
+
+**2. Git Integration Issues**
+```bash
+# Verify git status
+git status
+
+# Ensure you're in a git repository
+git init  # If needed
+
+# Check remote configuration
+git remote -v
+```
+
+**3. GitHub Integration Issues**
+```bash
+# Verify token permissions
+sl pr list  # Should work if token is valid
+
+# Set token if needed
+sl config --github-token YOUR_TOKEN
+
+# Check repository access
+git remote get-url origin
+```
+
+**4. Performance Optimization**
+```bash
+# For large repositories, use limits
+sl search "query" --limit 10
+sl since 1w  # Instead of analyzing entire history
+
+# Use local AI for privacy/speed
+sl switch ollama
+```
+
+This comprehensive guide covers all major Sayless features. Start with the basic workflows and gradually incorporate advanced features as you become more comfortable with the tool!
 
 ---
 
-## 🎯 **Key Messages to Reinforce**
-
-1. **"This is not just a tool, it's a workflow revolution"**
-2. **"Stop writing git messages, start building features"**
-3. **"AI that actually understands your code"**
-4. **"From junior to senior-level git workflow, instantly"**
-5. **"The future of development is here"**
-
----
-
-## 📊 **Demo Metrics to Track**
-
-- Show actual time savings (stopwatch overlay)
-- Line count of generated content vs. typical manual content
-- Number of issues found in security review
-- Dependencies automatically detected
-- Commits found through semantic search
-
----
-
-## 🎪 **Bonus: Advanced Demo Elements**
-
-### **For Technical Audiences**
-- Show the multiple AI providers (OpenAI, Claude, Ollama)
-- Demonstrate the analytics and insights
-- Show the I/O samples and detailed metrics
-- Explain the semantic search technology
-
-### **For Managers/Decision Makers**
-- Focus on time savings and productivity
-- Show the consistency and quality improvements
-- Highlight the security review capabilities
-- Demonstrate team collaboration features
-
-### **For Security Teams**
-- Deep dive into security review types
-- Show vulnerability detection
-- Demonstrate compliance checking
-- Show audit trails and analytics
-
----
-
-*Remember: The goal is to make developers think "I NEED this tool" not "this is a cool tool". Show them their daily pain being eliminated effortlessly.* 
+*Made with ❤️ for developers who want smarter Git workflows* 

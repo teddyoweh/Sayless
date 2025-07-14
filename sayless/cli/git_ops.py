@@ -72,6 +72,34 @@ def get_current_branch() -> str:
     result = run_git_command(['branch', '--show-current'])
     return result.stdout.strip()
 
+def get_default_branch() -> str:
+    """Detect the default branch (main or master)"""
+    try:
+        # Try 'main' first (modern default)
+        if run_git_command(['rev-parse', '--verify', 'main'], check=False).returncode == 0:
+            return 'main'
+        # Fall back to 'master' (legacy default)
+        elif run_git_command(['rev-parse', '--verify', 'master'], check=False).returncode == 0:
+            return 'master'
+        else:
+            # If neither exists, try to get the actual default from git
+            try:
+                # Get the default branch from remote
+                result = run_git_command(['symbolic-ref', 'refs/remotes/origin/HEAD'], check=False)
+                if result.returncode == 0:
+                    return result.stdout.strip().split('/')[-1]
+            except:
+                pass
+            
+            # Last resort: try to get the current branch or default to 'main'
+            try:
+                current = get_current_branch()
+                return current if current else 'main'
+            except:
+                return 'main'
+    except:
+        return 'main'
+
 def sanitize_branch_name(name: str) -> str:
     """Convert a string into a valid git branch name"""
     # Convert to lowercase
@@ -410,7 +438,7 @@ def get_branch_summary(branch: str) -> str:
     # Get branch changes
     try:
         # Find the merge base with main/master
-        base_branch = 'main' if run_git_command(['rev-parse', '--verify', 'main'], check=False).returncode == 0 else 'master'
+        base_branch = get_default_branch()
         merge_base = run_git_command(['merge-base', base_branch, branch]).stdout.strip()
         
         # Get diff summary
